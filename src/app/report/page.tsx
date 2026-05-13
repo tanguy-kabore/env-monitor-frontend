@@ -127,7 +127,7 @@ export default function ReportPage() {
     const headers = Object.keys(rows[0]);
     const csv = [
       headers.join(";"),
-      ...rows.map(r => headers.map(h => String((r as any)[h])).join(";")),
+      ...rows.map((r: any) => headers.map((h: string) => String(r[h])).join(";")),
     ].join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
