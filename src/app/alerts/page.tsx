@@ -5,6 +5,7 @@ import { useApi } from "@/hooks/useApi";
 import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { formatDateTime } from "@/lib/utils";
+import { ALERT_TYPE_COLORS, ALERT_SEVERITY_COLORS } from "@/lib/thresholds";
 import { Bell, AlertTriangle, ShieldAlert, Siren, Search, X, Filter, CheckCircle, TrendingUp, Clock, Trash2, ShieldOff } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -89,7 +90,7 @@ export default function AlertsPage() {
   const [resolvingAll, setResolvingAll] = useState(false);
   const [historyDays, setHistoryDays] = useState(30);
 
-  const histStats = useApi(() => api.getAlertHistoryStats(historyDays), [historyDays]);
+  const histStats = useApi(() => api.getAlertHistoryStats(historyDays), [historyDays], "alerts-history");
 
   const handleResolve = async (id: string) => {
     setResolving(id);
@@ -131,13 +132,13 @@ export default function AlertsPage() {
     return p;
   }, [filterType, filterSeverity, filterActive]);
 
-  const alerts = useApi(() => api.getAlerts(params), [JSON.stringify(params)]);
-  const stats = useApi(() => api.getAlertStats(), []);
+  const alerts = useApi(() => api.getAlerts(params), [JSON.stringify(params)], "alerts-list");
+  const stats = useApi(() => api.getAlertStats(), [], "alerts-stats");
 
   const SEVERITY_ORDER: Record<string, number> = { critical: 0, danger: 1, warning: 2, info: 3 };
 
   const filtered = useMemo(() => {
-    const list: any[] = (alerts.data?.data || [])
+    const list: any[] = Array.isArray(alerts.data?.data) ? alerts.data?.data : []
       .filter((a: any) => !resolvedIds.has(a.id) && !deletedIds.has(a.id));
     const searched = !search.trim() ? list : list.filter(a =>
       a.title?.toLowerCase().includes(search.toLowerCase()) ||
@@ -226,26 +227,26 @@ export default function AlertsPage() {
                 <AreaChart data={histStats.data.timeline} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gFlood" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor={ALERT_TYPE_COLORS.flood} stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor={ALERT_TYPE_COLORS.flood} stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="gAir" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor={ALERT_TYPE_COLORS.air_quality} stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor={ALERT_TYPE_COLORS.air_quality} stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="gHeat" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                      <stop offset="5%" stopColor={ALERT_TYPE_COLORS.heat_wave} stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor={ALERT_TYPE_COLORS.heat_wave} stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="gDrought" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                      <stop offset="5%" stopColor={ALERT_TYPE_COLORS.drought} stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor={ALERT_TYPE_COLORS.drought} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }}
                     tickFormatter={v => { const d = new Date(v); return `${d.getDate()}/${d.getMonth()+1}`; }}
-                    interval={Math.floor(histStats.data.timeline.length / 6)} />
+                    interval={Math.floor((histStats.data.timeline?.length || 0) / 6)} />
                   <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                   <Tooltip
                     labelFormatter={v => new Date(v).toLocaleDateString("fr-FR", { day:"numeric", month:"long" })}
@@ -253,10 +254,10 @@ export default function AlertsPage() {
                     contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }}
                     formatter={(v: string) => ({ flood:"Inondation", air_quality:"Qualité air", heat_wave:"Canicule", drought:"Sécheresse" }[v] || v)} />
-                  <Area type="monotone" dataKey="flood"       stroke="#3b82f6" fill="url(#gFlood)"   strokeWidth={2} />
-                  <Area type="monotone" dataKey="air_quality" stroke="#14b8a6" fill="url(#gAir)"     strokeWidth={2} />
-                  <Area type="monotone" dataKey="heat_wave"   stroke="#ef4444" fill="url(#gHeat)"    strokeWidth={2} />
-                  <Area type="monotone" dataKey="drought"     stroke="#f59e0b" fill="url(#gDrought)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="flood"       stroke={ALERT_TYPE_COLORS.flood}       fill="url(#gFlood)"   strokeWidth={2} />
+                  <Area type="monotone" dataKey="air_quality" stroke={ALERT_TYPE_COLORS.air_quality} fill="url(#gAir)"     strokeWidth={2} />
+                  <Area type="monotone" dataKey="heat_wave"   stroke={ALERT_TYPE_COLORS.heat_wave}   fill="url(#gHeat)"    strokeWidth={2} />
+                  <Area type="monotone" dataKey="drought"     stroke={ALERT_TYPE_COLORS.drought}     fill="url(#gDrought)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -403,79 +404,107 @@ export default function AlertsPage() {
               )}
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y divide-border">
               {filtered.map((alert: any) => (
-                <div key={alert.id} className={`border-l-4 rounded-lg p-4 ${!alert.is_active ? "border-l-gray-300 bg-gray-50/40 opacity-80" : severityStyle[alert.severity] || "border-l-gray-300 bg-gray-50/50"}`}>
-                  <div className="flex items-start gap-3">
-                    {alert.is_active ? severityIcon[alert.severity] : <CheckCircle className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />}
-                    <div className="flex-1 min-w-0">
-                      {/* Title row */}
-                      <div className="flex items-start justify-between gap-2 flex-wrap">
-                        <div>
-                          <h4 className="font-medium text-sm">{alert.title}</h4>
-                          {alert.locations?.name && (
-                            <p className="text-xs text-text-muted mt-0.5">📍 {alert.locations.name}</p>
-                          )}
-                        </div>
-                        {/* Timestamps */}
-                        <div className="text-right shrink-0 space-y-0.5">
-                          <p className="text-[10px] text-text-muted flex items-center gap-1 justify-end">
-                            <Clock className="w-2.5 h-2.5" />
-                            Début : <strong className="text-text">{formatDateTime(alert.start_date || alert.created_at)}</strong>
-                          </p>
-                          {alert.is_active ? (
-                            <p className="text-[10px] text-text-muted">
-                              Durée : <strong className="text-primary">{formatDuration(alert.start_date || alert.created_at)}</strong>
-                              {alert.last_checked_at && <span className="ml-1 text-text-muted">· vérifié {formatDateTime(alert.last_checked_at)}</span>}
-                            </p>
-                          ) : (
-                            <p className="text-[10px] text-text-muted">
-                              Résolue : <strong className="text-text">{formatDateTime(alert.end_date)}</strong>
-                              <span className="ml-1">· durée {formatDuration(alert.start_date || alert.created_at, alert.end_date)}</span>
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      {alert.description && <p className="text-xs text-text-secondary mt-1.5">{alert.description}</p>}
-                      {/* Badge row */}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${typeBadge[alert.alert_type] || "bg-gray-100 text-gray-700 border-gray-200"}`}>
-                          {TYPE_LABELS[alert.alert_type] || alert.alert_type}
-                        </span>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${severityBadge[alert.severity] || "bg-gray-100 text-gray-700 border-gray-200"}`}
-                          title={SEVERITIES.find(s => s.value === alert.severity)?.desc || ""}>
-                          {SEVERITY_FR[alert.severity] || alert.severity}
-                        </span>
-                        {!alert.is_active && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500 border border-gray-200">✓ Résolue</span>
-                        )}
-                      </div>
+                <div key={alert.id}
+                  className={`flex items-stretch gap-0 transition-colors hover:bg-bg/60 ${!alert.is_active ? "opacity-70" : ""}`}>
+                  {/* Severity accent bar */}
+                  <div className={`w-1 shrink-0 rounded-l-sm ${
+                    !alert.is_active ? "bg-gray-300"
+                    : alert.severity === "critical" ? "bg-red-500"
+                    : alert.severity === "danger"   ? "bg-orange-500"
+                    : alert.severity === "warning"  ? "bg-yellow-400"
+                    : "bg-blue-400"
+                  }`} />
+
+                  <div className="flex-1 flex items-start gap-3 px-4 py-4 min-w-0">
+                    {/* Severity icon */}
+                    <div className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center ${
+                      !alert.is_active ? "bg-gray-100"
+                      : alert.severity === "critical" ? "bg-red-50"
+                      : alert.severity === "danger"   ? "bg-orange-50"
+                      : alert.severity === "warning"  ? "bg-yellow-50"
+                      : "bg-blue-50"
+                    }`}>
+                      {alert.is_active
+                        ? (severityIcon[alert.severity] || <Bell className="w-4 h-4 text-blue-400" />)
+                        : <CheckCircle className="w-4 h-4 text-gray-400" />}
                     </div>
-                    <div className="shrink-0 ml-2 flex flex-col gap-1.5">
-                      {alert.is_active ? (
-                        <button
-                          onClick={() => handleResolve(alert.id)}
-                          disabled={resolving === alert.id}
-                          title="Marquer comme résolue manuellement"
-                          className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition disabled:opacity-50">
-                          {resolving === alert.id
-                            ? <span className="w-3 h-3 border-2 border-green-300 border-t-green-600 rounded-full animate-spin" />
-                            : <CheckCircle className="w-3 h-3" />}
-                          Résoudre
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleDelete(alert.id)}
-                          disabled={deleting === alert.id}
-                          title="Supprimer définitivement cet enregistrement"
-                          className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition disabled:opacity-50">
-                          {deleting === alert.id
-                            ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
-                            : <Trash2 className="w-3 h-3" />}
-                          Supprimer
-                        </button>
-                      )}
+
+                    {/* Main content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        {/* Left: title + location + description */}
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-sm text-text leading-tight">{alert.title}</h4>
+                          {alert.locations?.name && (
+                            <p className="text-xs text-text-muted mt-0.5 flex items-center gap-1">
+                              <span className="text-[10px]">📍</span> {alert.locations.name}
+                            </p>
+                          )}
+                          {alert.description && (
+                            <p className="text-xs text-text-secondary mt-1 leading-snug">{alert.description}</p>
+                          )}
+                          {/* Badges */}
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${typeBadge[alert.alert_type] || "bg-gray-100 text-gray-700 border-gray-200"}`}>
+                              {TYPE_LABELS[alert.alert_type] || alert.alert_type}
+                            </span>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${severityBadge[alert.severity] || "bg-gray-100 text-gray-700 border-gray-200"}`}
+                              title={SEVERITIES.find(s => s.value === alert.severity)?.desc || ""}>
+                              {SEVERITY_FR[alert.severity] || alert.severity}
+                            </span>
+                            {!alert.is_active && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500 border border-gray-200 flex items-center gap-1">
+                                <CheckCircle className="w-2.5 h-2.5" /> Résolue
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right: timestamps + action */}
+                        <div className="shrink-0 flex flex-col items-end gap-2">
+                          <div className="text-right space-y-0.5">
+                            <p className="text-[10px] text-text-muted flex items-center gap-1 justify-end">
+                              <Clock className="w-2.5 h-2.5" />
+                              Début : <strong className="text-text font-medium">{formatDateTime(alert.start_date || alert.created_at)}</strong>
+                            </p>
+                            {alert.is_active ? (
+                              <p className="text-[10px] text-text-muted">
+                                Durée : <strong className="text-primary font-semibold">{formatDuration(alert.start_date || alert.created_at)}</strong>
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-text-muted">
+                                Durée : <span className="font-medium">{formatDuration(alert.start_date || alert.created_at, alert.end_date)}</span>
+                              </p>
+                            )}
+                          </div>
+                          {alert.is_active ? (
+                            <button
+                              onClick={() => handleResolve(alert.id)}
+                              disabled={resolving === alert.id}
+                              title="Marquer comme résolue"
+                              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 font-medium transition disabled:opacity-50">
+                              {resolving === alert.id
+                                ? <span className="w-3 h-3 border-2 border-green-300 border-t-green-600 rounded-full animate-spin" />
+                                : <CheckCircle className="w-3.5 h-3.5" />}
+                              Résoudre
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleDelete(alert.id)}
+                              disabled={deleting === alert.id}
+                              title="Supprimer définitivement"
+                              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 font-medium transition disabled:opacity-50">
+                              {deleting === alert.id
+                                ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />}
+                              Supprimer
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

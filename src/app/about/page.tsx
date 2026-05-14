@@ -60,11 +60,16 @@ function ApiCard({ name, url, description, endpoints }: { name: string; url: str
 // ── main ──────────────────────────────────────────────────────────────────────
 
 export default function AboutPage() {
-  const cfg = useApi(() => api.getConfig(), []);
+  const cfg = useApi(() => api.getConfig(), [], "about-config");
   const app = cfg.data?.app;
   const country = cfg.data?.country;
   const dc = cfg.data?.data_collection;
   const ml = cfg.data?.ml;
+  const t = cfg.data?.alert_thresholds || {};
+  const ft = t.flood        || { low: 20,  moderate: 75,  high: 150,  extreme: 300 };
+  const aq = t.air_quality  || { good: 20, fair: 40,      moderate: 60, poor: 80, very_poor: 100 };
+  const dr = t.drought      || { normal: -0.5, moderate: -1.0, severe: -1.5, extreme: -2.0 };
+  const tmp = t.temperature || { heat_warning: 40, heat_extreme: 43, cold_warning: 15 };
 
   const vt = app?.version_type || "alpha";
   const vtStyle = VERSION_TYPE_STYLE[vt] || VERSION_TYPE_STYLE.alpha;
@@ -199,10 +204,10 @@ export default function AboutPage() {
             <p className="text-xs font-semibold text-blue-700 flex items-center gap-1 mb-2">
               <Waves className="w-3.5 h-3.5" /> Inondations (débit)
             </p>
-            <ThresholdRow label="Faible"    value="< 10"    unit="m³/s" color="text-green-600" />
-            <ThresholdRow label="Modéré"    value="10 – 50" unit="m³/s" color="text-yellow-600" />
-            <ThresholdRow label="Élevé"     value="50 – 100" unit="m³/s" color="text-orange-600" />
-            <ThresholdRow label="Extrême"   value="> 100"   unit="m³/s" color="text-red-600" />
+            <ThresholdRow label="Faible"    value={`< ${ft.moderate}`}                       unit="m³/s" color="text-green-600" />
+            <ThresholdRow label="Modéré"    value={`${ft.moderate} – ${ft.high}`}            unit="m³/s" color="text-yellow-600" />
+            <ThresholdRow label="Élevé"     value={`${ft.high} – ${ft.extreme}`}           unit="m³/s" color="text-orange-600" />
+            <ThresholdRow label="Extrême"   value={`> ${ft.extreme}`}                        unit="m³/s" color="text-red-600" />
             <p className="text-[10px] text-text-muted mt-2">Source : percentiles GloFAS + seuils configurables</p>
           </div>
 
@@ -211,11 +216,11 @@ export default function AboutPage() {
             <p className="text-xs font-semibold text-teal-700 flex items-center gap-1 mb-2">
               <Wind className="w-3.5 h-3.5" /> Qualité de l'air (AQI)
             </p>
-            <ThresholdRow label="Bon"        value="0 – 20"  unit="AQI" color="text-green-600" />
-            <ThresholdRow label="Acceptable" value="21 – 40" unit="AQI" color="text-lime-600" />
-            <ThresholdRow label="Modéré"     value="41 – 60" unit="AQI" color="text-yellow-600" />
-            <ThresholdRow label="Mauvais"    value="61 – 80" unit="AQI" color="text-orange-600" />
-            <ThresholdRow label="Très mauvais" value="> 80" unit="AQI" color="text-red-600" />
+            <ThresholdRow label="Bon"          value={`0 – ${aq.good}`}                      unit="AQI" color="text-green-600" />
+            <ThresholdRow label="Acceptable"   value={`${aq.good + 1} – ${aq.fair}`}        unit="AQI" color="text-lime-600" />
+            <ThresholdRow label="Modéré"       value={`${aq.fair + 1} – ${aq.moderate}`}   unit="AQI" color="text-yellow-600" />
+            <ThresholdRow label="Mauvais"      value={`${aq.moderate + 1} – ${aq.poor}`}  unit="AQI" color="text-orange-600" />
+            <ThresholdRow label="Très mauvais" value={`> ${aq.poor}`}                       unit="AQI" color="text-red-600" />
             <p className="text-[10px] text-text-muted mt-2">Norme : EAQI (Agence Européenne pour l'Environnement)</p>
           </div>
 
@@ -224,11 +229,11 @@ export default function AboutPage() {
             <p className="text-xs font-semibold text-amber-700 flex items-center gap-1 mb-2">
               <Droplets className="w-3.5 h-3.5" /> Sécheresse (SPI)
             </p>
-            <ThresholdRow label="Normal"         value="≥ −0.5"         unit="SPI" color="text-green-600" />
-            <ThresholdRow label="Anomalie sèche" value="−1.0 à −0.5"    unit="SPI" color="text-blue-500" />
-            <ThresholdRow label="Modérée"        value="−1.5 à −1.0"    unit="SPI" color="text-yellow-600" />
-            <ThresholdRow label="Sévère"         value="−2.0 à −1.5"    unit="SPI" color="text-orange-600" />
-            <ThresholdRow label="Extrême"        value="< −2.0"         unit="SPI" color="text-red-600" />
+            <ThresholdRow label="Normal"         value={`≥ ${dr.normal}`}                          unit="SPI" color="text-green-600" />
+            <ThresholdRow label="Anomalie sèche" value={`${dr.moderate} à ${dr.normal}`}          unit="SPI" color="text-blue-500" />
+            <ThresholdRow label="Modérée"        value={`${dr.severe} à ${dr.moderate}`}         unit="SPI" color="text-yellow-600" />
+            <ThresholdRow label="Sévère"         value={`${dr.extreme} à ${dr.severe}`}          unit="SPI" color="text-orange-600" />
+            <ThresholdRow label="Extrême"        value={`< ${dr.extreme}`}                         unit="SPI" color="text-red-600" />
             <p className="text-[10px] text-text-muted mt-2">Norme : WMO-No. 1090 (SPI)</p>
           </div>
 
@@ -237,9 +242,9 @@ export default function AboutPage() {
             <p className="text-xs font-semibold text-red-700 flex items-center gap-1 mb-2">
               <Thermometer className="w-3.5 h-3.5" /> Canicule (température)
             </p>
-            <ThresholdRow label="Avertissement chaleur" value="> 42" unit="°C" color="text-orange-600" />
-            <ThresholdRow label="Chaleur extrême"       value="> 45" unit="°C" color="text-red-600" />
-            <ThresholdRow label="Avertissement froid"   value="< 10" unit="°C" color="text-blue-500" />
+            <ThresholdRow label="Avertissement chaleur" value={`> ${tmp.heat_warning}`} unit="°C" color="text-orange-600" />
+            <ThresholdRow label="Chaleur extrême"       value={`> ${tmp.heat_extreme}`} unit="°C" color="text-red-600" />
+            <ThresholdRow label="Avertissement froid"   value={`< ${tmp.cold_warning}`} unit="°C" color="text-blue-500" />
             <p className="text-[10px] text-text-muted mt-2">Adapté au contexte climatique du Burkina Faso</p>
           </div>
         </div>

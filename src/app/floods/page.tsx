@@ -7,7 +7,8 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import LocationSelect from "@/components/LocationSelect";
 import MapView from "@/components/MapView";
 import { formatNumber, formatDate, getFloodRiskLabel } from "@/lib/utils";
-import { Waves, TrendingUp, BarChart2, AlertTriangle, Droplets, Activity, Info } from "lucide-react";
+import { useThresholds, classifyFloodRisk, RISK_COLORS, FLOOD_CHART_COLORS } from "@/lib/thresholds";
+import { Waves, TrendingUp, BarChart2, AlertTriangle, Droplets, Activity, Info, Sparkles } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Legend, AreaChart, Area, ReferenceLine, ComposedChart, Bar, Cell,
@@ -62,14 +63,9 @@ const CITY_RIVERS: Record<string, string> = {
   ouargaye: "Nakambé",
 };
 
-// Risk thresholds (GloFAS indicative, m³/s)
-const RISK_THRESHOLDS = { moderate: 50, high: 100, extreme: 200 };
 
 function riskColor(risk?: string) {
-  if (risk === "extreme") return "#D63031";
-  if (risk === "high")    return "#E17055";
-  if (risk === "moderate") return "#FDCB6E";
-  return "#00B894";
+  return RISK_COLORS[(risk as keyof typeof RISK_COLORS) ?? "low"]?.hex ?? RISK_COLORS.low.hex;
 }
 
 function KpiCard({ label, value, sub, icon, accent }: { label: string; value: any; sub?: string; icon: React.ReactNode; accent: string }) {
@@ -114,13 +110,15 @@ export default function FloodsPage() {
   const [locationId, setLocationId] = useState("ouagadougou");
   const [locationName, setLocationName] = useState("Ouagadougou");
   const [histDays, setHistDays] = useState(90);
+  const thresholds = useThresholds();
+  const RISK_THRESHOLDS = thresholds.flood;
 
   const riverName = CITY_RIVERS[locationId] || "cours d'eau local (GloFAS)";
 
-  const forecast    = useApi(() => api.getFloodForecast(locationId), [locationId]);
-  const history     = useApi(() => api.getFloodHistory(locationId, histDays), [locationId, histDays]);
-  const predictions = useApi(() => api.getFloodPredictions(locationId), [locationId]);
-  const riskMap     = useApi(() => api.getFloodRiskMap(), []);
+  const forecast    = useApi(() => api.getFloodForecast(locationId), [locationId], "flood-forecast");
+  const history     = useApi(() => api.getFloodHistory(locationId, histDays), [locationId, histDays], "flood-history");
+  const predictions = useApi(() => api.getFloodPredictions(locationId), [locationId], "flood-predictions");
+  const riskMap     = useApi(() => api.getFloodRiskMap(), [], "flood-map");
 
   // ── Forecast chart ──
   const forecastDaily = forecast.data?.data?.daily;
@@ -159,7 +157,7 @@ export default function FloodsPage() {
   }));
 
   // ── ML Predictions chart ──
-  const predRaw: any[] = predictions.data?.data || [];
+  const predRaw: any[] = Array.isArray(predictions.data?.data) ? predictions.data?.data : [];
   const today = new Date(); today.setHours(0, 0, 0, 0);
   // Deduplicate by day
   const predByDay = new Map<string, any>();
@@ -208,15 +206,18 @@ export default function FloodsPage() {
   })();
 
   // ── Map ──
-  const mapPoints = (riskMap.data?.data || []).map((d: any) => ({
-    id: d.location.external_id,
-    name: d.location.name,
-    latitude: d.location.latitude,
-    longitude: d.location.longitude,
-    value: d.latest_flood?.river_discharge || 0,
-    label: d.latest_flood ? `${formatNumber(d.latest_flood.river_discharge, 2)} m³/s` : "N/A",
-    risk: d.latest_flood?.flood_risk_level || "low",
-  }));
+  const riskMapData = riskMap.data?.data;
+  const mapPoints = (Array.isArray(riskMapData) ? riskMapData : [])
+    .filter((d: any) => d?.location)
+    .map((d: any) => ({
+      id: d.location.external_id,
+      name: d.location.name,
+      latitude: d.location.latitude,
+      longitude: d.location.longitude,
+      value: d.latest_flood?.river_discharge || 0,
+      label: d.latest_flood ? `${formatNumber(d.latest_flood.river_discharge, 2)} m³/s` : "N/A",
+      risk: d.latest_flood?.flood_risk_level || "low",
+    }));
 
   const { label: riskLabel, bg: riskBg, color: riskColor2 } = getFloodRiskLabel(currentRisk);
 
@@ -268,17 +269,165 @@ export default function FloodsPage() {
         />
       </div>
 
+      {/* ── ML Predictions (Featured) ── */}
+      {predChart.length > 0 && (
+        <Card
+          title={
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              <span>Prédictions Intelligence Artificielle</span>
+              <span className="text-xs font-normal text-text-muted ml-2">
+                ({predChart.filter((d: any) => !d.isFuture).length}j passés · {predChart.filter((d: any) => d.isFuture).length}j futurs)
+              </span>
+            </div>
+          }
+          icon={<Activity className="w-4 h-4" />}
+          className="border-primary/20 shadow-lg shadow-primary/5"
+        >
+          {/* Enhanced Legend */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 p-3 bg-bg rounded-lg border border-border/50">
+            <span className="font-medium text-sm text-text">Modèle <span className="text-primary font-bold">Gradient Boosting</span></span>
+            <span className="w-px h-4 bg-border" />
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-text-muted font-medium">Seuils :</span>
+              {[
+                { color: RISK_COLORS.low.hex, label: `Faible` },
+                { color: RISK_COLORS.moderate.hex, label: `Modéré` },
+                { color: RISK_COLORS.high.hex, label: `Élevé` },
+                { color: RISK_COLORS.extreme.hex, label: `Extrême` },
+              ].map(({ color, label }) => (
+                <span key={label} className="flex items-center gap-1.5 text-xs text-text-muted">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                  {label}
+                </span>
+              ))}
+            </div>
+            <span className="w-px h-4 bg-border" />
+            <div className="flex items-center gap-2 text-xs text-text-muted">
+              <span className="flex items-center gap-1">
+                <span className="w-4 border-t-2 border-dashed border-primary" />
+                Passé
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-4 border-t-2 border-primary" />
+                Futur
+              </span>
+            </div>
+          </div>
+
+          <ResponsiveContainer width="100%" height={320}>
+            <ComposedChart data={predChart} margin={{ top: 10, right: 48, left: 0, bottom: 0 }}>
+              {/* Colored risk zone backgrounds */}
+              <ReferenceArea yAxisId="q" y1={0}                          y2={RISK_THRESHOLDS.moderate} fill={RISK_COLORS.low.hex}      fillOpacity={0.06} />
+              <ReferenceArea yAxisId="q" y1={RISK_THRESHOLDS.moderate}   y2={RISK_THRESHOLDS.high}    fill={RISK_COLORS.moderate.hex} fillOpacity={0.08} />
+              <ReferenceArea yAxisId="q" y1={RISK_THRESHOLDS.high}       y2={RISK_THRESHOLDS.extreme} fill={RISK_COLORS.high.hex}     fillOpacity={0.08} />
+              <ReferenceArea yAxisId="q" y1={RISK_THRESHOLDS.extreme}    y2={9999}                    fill={RISK_COLORS.extreme.hex}  fillOpacity={0.08} />
+
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
+                interval={Math.max(0, Math.floor(predChart.length / 8) - 1)} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="q" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
+                axisLine={false} tickLine={false} width={48} unit=" m³/s" />
+              <YAxis yAxisId="p" orientation="right" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }}
+                axisLine={false} tickLine={false} width={40} unit="%" domain={[0, 100]} />
+
+              <Tooltip
+                content={({ active, payload, label }: any) => {
+                  if (!active || !payload?.length) return null;
+                  const pt = payload[0]?.payload;
+                  const q = pt["Passé prédit (m³/s)"] ?? pt["Futur prédit (m³/s)"];
+                  const prob = pt["Probabilité inondation (%)"];
+                  const discharge = q ?? 0;
+                  const risk = discharge >= RISK_THRESHOLDS.extreme ? "extreme"
+                    : discharge >= RISK_THRESHOLDS.high     ? "high"
+                    : discharge >= RISK_THRESHOLDS.moderate ? "moderate" : "low";
+                  const { label: rl, color: rc } = getFloodRiskLabel(risk);
+                  return (
+                    <div className="bg-card border border-border rounded-lg shadow-xl p-3 text-xs min-w-[200px]">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-base">{pt.isFuture ? "🔮" : "📊"}</span>
+                        <p className="font-semibold text-text">{label}</p>
+                      </div>
+                      <p className="text-text-muted text-[10px] uppercase tracking-wide">{pt.isFuture ? "Prédiction future" : "Rétro-prédiction"}</p>
+                      <p className="font-bold text-xl text-text mt-1">{formatNumber(q, 2)} <span className="text-sm font-normal text-text-muted">m³/s</span></p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-text-muted">Risque:</span>
+                        <span className="font-bold px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: rc + "20", color: rc }}>{rl}</span>
+                      </div>
+                      {prob != null && (
+                        <div className="mt-3 pt-2 border-t border-border">
+                          <p className="text-text-muted text-[10px]">Probabilité inondation</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="flex-1 bg-border rounded-full h-2">
+                              <div className="h-2 rounded-full transition-all" style={{ width: `${Math.min(prob,100)}%`, backgroundColor: prob > 50 ? RISK_COLORS.extreme.hex : RISK_COLORS.moderate.hex }} />
+                            </div>
+                            <span className="font-bold text-text">{prob}%</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
+              />
+
+              {/* Today separator */}
+              {predChart.find((d: any) => d.isFuture) && (
+                <ReferenceLine yAxisId="q"
+                  x={predChart.find((d: any) => d.isFuture)?.date}
+                  stroke={FLOOD_CHART_COLORS.neutral} strokeWidth={2} strokeDasharray="6 3"
+                  label={{ value: "▶ Aujourd'hui", fill: FLOOD_CHART_COLORS.neutral, fontSize: 10, position: "insideTopLeft", dy: -4 }}
+                />
+              )}
+
+              {/* Risk threshold lines */}
+              <ReferenceLine yAxisId="q" y={RISK_THRESHOLDS.moderate} stroke={RISK_COLORS.moderate.hex} strokeDasharray="4 2" strokeOpacity={0.8}
+                label={{ value: "Modéré", fill: RISK_COLORS.moderate.hex, fontSize: 10, position: "insideRight", dx: -4 }} />
+              <ReferenceLine yAxisId="q" y={RISK_THRESHOLDS.high}     stroke={RISK_COLORS.high.hex}     strokeDasharray="4 2" strokeOpacity={0.8}
+                label={{ value: "Élevé",  fill: RISK_COLORS.high.hex,     fontSize: 10, position: "insideRight", dx: -4 }} />
+              <ReferenceLine yAxisId="q" y={RISK_THRESHOLDS.extreme}  stroke={RISK_COLORS.extreme.hex}  strokeDasharray="4 2" strokeOpacity={0.8}
+                label={{ value: "Extrême", fill: RISK_COLORS.extreme.hex,  fontSize: 10, position: "insideRight", dx: -4 }} />
+
+              {/* Probability alert threshold */}
+              <ReferenceLine yAxisId="p" y={50} stroke={RISK_COLORS.extreme.hex} strokeDasharray="3 3" strokeOpacity={0.4} />
+
+              {/* Bars colored by risk */}
+              <Bar yAxisId="q" dataKey="Passé prédit (m³/s)" radius={[4,4,0,0]} maxBarSize={40} strokeDasharray="4 2" strokeWidth={1}>
+                {predChart.map((entry: any, idx: number) => {
+                  const q = entry["Passé prédit (m³/s)"] ?? 0;
+                  const color = riskColor(q >= RISK_THRESHOLDS.extreme ? "extreme" : q >= RISK_THRESHOLDS.high ? "high" : q >= RISK_THRESHOLDS.moderate ? "moderate" : "low");
+                  return <Cell key={`past-${idx}`} fill={color} fillOpacity={0.9} stroke={color} />;
+                })}
+              </Bar>
+              <Bar yAxisId="q" dataKey="Futur prédit (m³/s)" radius={[4,4,0,0]} maxBarSize={40} strokeWidth={1.5}>
+                {predChart.map((entry: any, idx: number) => {
+                  const q = entry["Futur prédit (m³/s)"] ?? 0;
+                  const color = riskColor(q >= RISK_THRESHOLDS.extreme ? "extreme" : q >= RISK_THRESHOLDS.high ? "high" : q >= RISK_THRESHOLDS.moderate ? "moderate" : "low");
+                  return <Cell key={`fut-${idx}`} fill={color} fillOpacity={0.6} stroke={color} />
+                })}
+              </Bar>
+
+              {/* Probability line */}
+              <Line yAxisId="p" type="monotone" dataKey="Probabilité inondation (%)"
+                stroke={RISK_COLORS.extreme.hex} strokeWidth={2.5} strokeDasharray="5 3" dot={false} activeDot={{ r: 5, fill: RISK_COLORS.extreme.hex, strokeWidth: 2, stroke: "#fff" }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+
+          <div className="flex items-center justify-between mt-3 text-[11px] text-text-muted px-2">
+            <span>Barres opaques = données passées · Barres translucides = prédictions futures</span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+              Ligne = Probabilité d&apos;inondation (%)
+            </span>
+          </div>
+        </Card>
+      )}
+
       {/* ── Carte ── */}
       <Card title="Carte nationale des risques d'inondation" icon={<Waves className="w-5 h-5" />}>
         <MapView
           points={mapPoints}
           height="400px"
-          colorFn={(p) => {
-            if (p.risk === "extreme") return "#D63031";
-            if (p.risk === "high")    return "#E17055";
-            if (p.risk === "moderate") return "#FDCB6E";
-            return "#00B894";
-          }}
+          colorFn={(p) => RISK_COLORS[(p.risk as keyof typeof RISK_COLORS) ?? "unknown"]?.hex ?? RISK_COLORS.unknown.hex}
           radiusFn={(p) => Math.max(6, Math.min(20, (p.value || 0) / 10 + 6))}
         />
         <div className="flex gap-3 mt-3 justify-center flex-wrap">
@@ -317,28 +466,28 @@ export default function FloodsPage() {
                 <ComposedChart data={historyChart} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="histFloodGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#1B6FA8" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#1B6FA8" stopOpacity={0} />
+                      <stop offset="5%"  stopColor={FLOOD_CHART_COLORS.historic} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={FLOOD_CHART_COLORS.historic} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   {/* Risk zones background */}
-                  <ReferenceArea y1={0}                            y2={RISK_THRESHOLDS.moderate} fill="#00B894" fillOpacity={0.04} />
-                  <ReferenceArea y1={RISK_THRESHOLDS.moderate}    y2={RISK_THRESHOLDS.high}     fill="#FDCB6E" fillOpacity={0.08} />
-                  <ReferenceArea y1={RISK_THRESHOLDS.high}        y2={RISK_THRESHOLDS.extreme}  fill="#E17055" fillOpacity={0.08} />
-                  <ReferenceArea y1={RISK_THRESHOLDS.extreme}     y2={9999}                     fill="#D63031" fillOpacity={0.08} />
+                  <ReferenceArea y1={0}                            y2={RISK_THRESHOLDS.moderate} fill={RISK_COLORS.low.hex}      fillOpacity={0.04} />
+                  <ReferenceArea y1={RISK_THRESHOLDS.moderate}    y2={RISK_THRESHOLDS.high}     fill={RISK_COLORS.moderate.hex} fillOpacity={0.08} />
+                  <ReferenceArea y1={RISK_THRESHOLDS.high}        y2={RISK_THRESHOLDS.extreme}  fill={RISK_COLORS.high.hex}     fillOpacity={0.08} />
+                  <ReferenceArea y1={RISK_THRESHOLDS.extreme}     y2={9999}                     fill={RISK_COLORS.extreme.hex}  fillOpacity={0.08} />
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
                     interval={Math.max(0, Math.floor(historyChart.length / 8) - 1)} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
                     axisLine={false} tickLine={false} width={40} unit=" m³/s" />
                   <Tooltip content={<CustomHistTooltip />} />
-                  <ReferenceLine y={RISK_THRESHOLDS.moderate} stroke="#FDCB6E" strokeDasharray="4 2" strokeOpacity={0.8}
-                    label={{ value: "Modéré", fill: "#b59b00", fontSize: 9, position: "insideRight", dx: -4 }} />
-                  <ReferenceLine y={RISK_THRESHOLDS.high} stroke="#E17055" strokeDasharray="4 2" strokeOpacity={0.8}
-                    label={{ value: "Élevé", fill: "#E17055", fontSize: 9, position: "insideRight", dx: -4 }} />
-                  <ReferenceLine y={RISK_THRESHOLDS.extreme} stroke="#D63031" strokeDasharray="4 2" strokeOpacity={0.8}
-                    label={{ value: "Extrême", fill: "#D63031", fontSize: 9, position: "insideRight", dx: -4 }} />
-                  <Area type="monotoneX" dataKey="Débit (m³/s)" stroke="#1B6FA8" fill="url(#histFloodGrad)"
+                  <ReferenceLine y={RISK_THRESHOLDS.moderate} stroke={RISK_COLORS.moderate.hex} strokeDasharray="4 2" strokeOpacity={0.8}
+                    label={{ value: "Modéré", fill: RISK_COLORS.moderate.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+                  <ReferenceLine y={RISK_THRESHOLDS.high} stroke={RISK_COLORS.high.hex} strokeDasharray="4 2" strokeOpacity={0.8}
+                    label={{ value: "Élevé", fill: RISK_COLORS.high.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+                  <ReferenceLine y={RISK_THRESHOLDS.extreme} stroke={RISK_COLORS.extreme.hex} strokeDasharray="4 2" strokeOpacity={0.8}
+                    label={{ value: "Extrême", fill: RISK_COLORS.extreme.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+                  <Area type="monotoneX" dataKey="Débit (m³/s)" stroke={FLOOD_CHART_COLORS.historic} fill="url(#histFloodGrad)"
                     strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -397,27 +546,27 @@ export default function FloodsPage() {
             <AreaChart data={forecastChart} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="fcastGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#0EA5E9" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0} />
+                  <stop offset="5%"  stopColor={FLOOD_CHART_COLORS.forecast} stopOpacity={0.35} />
+                  <stop offset="95%" stopColor={FLOOD_CHART_COLORS.forecast} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <ReferenceArea y1={0}                         y2={RISK_THRESHOLDS.moderate} fill="#00B894" fillOpacity={0.04} />
-              <ReferenceArea y1={RISK_THRESHOLDS.moderate}  y2={RISK_THRESHOLDS.high}    fill="#FDCB6E" fillOpacity={0.08} />
-              <ReferenceArea y1={RISK_THRESHOLDS.high}      y2={RISK_THRESHOLDS.extreme} fill="#E17055" fillOpacity={0.08} />
-              <ReferenceArea y1={RISK_THRESHOLDS.extreme}   y2={9999}                    fill="#D63031" fillOpacity={0.08} />
+              <ReferenceArea y1={0}                         y2={RISK_THRESHOLDS.moderate} fill={RISK_COLORS.low.hex}      fillOpacity={0.04} />
+              <ReferenceArea y1={RISK_THRESHOLDS.moderate}  y2={RISK_THRESHOLDS.high}    fill={RISK_COLORS.moderate.hex} fillOpacity={0.08} />
+              <ReferenceArea y1={RISK_THRESHOLDS.high}      y2={RISK_THRESHOLDS.extreme} fill={RISK_COLORS.high.hex}     fillOpacity={0.08} />
+              <ReferenceArea y1={RISK_THRESHOLDS.extreme}   y2={9999}                    fill={RISK_COLORS.extreme.hex}  fillOpacity={0.08} />
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
                 interval={Math.max(0, Math.floor(forecastChart.length / 10) - 1)} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
                 axisLine={false} tickLine={false} width={40} unit=" m³/s" />
               <Tooltip content={<CustomFcastTooltip />} />
-              <ReferenceLine y={RISK_THRESHOLDS.moderate} stroke="#FDCB6E" strokeDasharray="4 2"
-                label={{ value: "Modéré (50)", fill: "#b59b00", fontSize: 9, position: "insideRight", dx: -4 }} />
-              <ReferenceLine y={RISK_THRESHOLDS.high} stroke="#E17055" strokeDasharray="4 2"
-                label={{ value: "Élevé (100)", fill: "#E17055", fontSize: 9, position: "insideRight", dx: -4 }} />
-              <ReferenceLine y={RISK_THRESHOLDS.extreme} stroke="#D63031" strokeDasharray="4 2"
-                label={{ value: "Extrême (200)", fill: "#D63031", fontSize: 9, position: "insideRight", dx: -4 }} />
-              <Area type="monotone" dataKey="Débit prévu (m³/s)" stroke="#0EA5E9" fill="url(#fcastGrad)"
+              <ReferenceLine y={RISK_THRESHOLDS.moderate} stroke={RISK_COLORS.moderate.hex} strokeDasharray="4 2"
+                label={{ value: `Modéré (${RISK_THRESHOLDS.moderate})`, fill: RISK_COLORS.moderate.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+              <ReferenceLine y={RISK_THRESHOLDS.high} stroke={RISK_COLORS.high.hex} strokeDasharray="4 2"
+                label={{ value: `Élevé (${RISK_THRESHOLDS.high})`, fill: RISK_COLORS.high.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+              <ReferenceLine y={RISK_THRESHOLDS.extreme} stroke={RISK_COLORS.extreme.hex} strokeDasharray="4 2"
+                label={{ value: `Extrême (${RISK_THRESHOLDS.extreme})`, fill: RISK_COLORS.extreme.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+              <Area type="monotone" dataKey="Débit prévu (m³/s)" stroke={FLOOD_CHART_COLORS.forecast} fill="url(#fcastGrad)"
                 strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             </AreaChart>
           </ResponsiveContainer>
@@ -459,12 +608,12 @@ export default function FloodsPage() {
                   );
                 }}
               />
-              <ReferenceLine y={RISK_THRESHOLDS.moderate} stroke="#FDCB6E" strokeDasharray="4 2"
-                label={{ value: "Modéré", fill: "#b59b00", fontSize: 9, position: "insideRight", dx: -4 }} />
-              <ReferenceLine y={RISK_THRESHOLDS.high} stroke="#E17055" strokeDasharray="4 2"
-                label={{ value: "Élevé", fill: "#E17055", fontSize: 9, position: "insideRight", dx: -4 }} />
-              <Bar dataKey="Passé (m³/s)" fill="#1B6FA8" fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={36} />
-              <Bar dataKey="Prévision (m³/s)" fill="#0EA5E9" fillOpacity={0.5} radius={[3, 3, 0, 0]} maxBarSize={36} strokeDasharray="4 2" stroke="#0EA5E9" />
+              <ReferenceLine y={RISK_THRESHOLDS.moderate} stroke={RISK_COLORS.moderate.hex} strokeDasharray="4 2"
+                label={{ value: "Modéré", fill: RISK_COLORS.moderate.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+              <ReferenceLine y={RISK_THRESHOLDS.high} stroke={RISK_COLORS.high.hex} strokeDasharray="4 2"
+                label={{ value: "Élevé", fill: RISK_COLORS.high.hex, fontSize: 9, position: "insideRight", dx: -4 }} />
+              <Bar dataKey="Passé (m³/s)" fill={FLOOD_CHART_COLORS.historic} fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={36} />
+              <Bar dataKey="Prévision (m³/s)" fill={FLOOD_CHART_COLORS.forecast} fillOpacity={0.5} radius={[3, 3, 0, 0]} maxBarSize={36} strokeDasharray="4 2" stroke={FLOOD_CHART_COLORS.forecast} />
             </ComposedChart>
           </ResponsiveContainer>
           <p className="text-[10px] text-text-muted text-right mt-1 pr-2">
@@ -473,150 +622,14 @@ export default function FloodsPage() {
         </Card>
       )}
 
-      {/* ── ML Predictions ── */}
-      {predChart.length > 0 && (
-        <Card title="Prédictions ML — Débit passé et futur" icon={<Activity className="w-4 h-4" />}>
-          {/* Legend */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-3 text-xs text-text-muted">
-            <span className="font-medium text-text-muted">Modèle <span className="text-primary font-semibold">Gradient Boosting</span></span>
-            <span className="w-px h-3 bg-border" />
-            <span className="font-medium mr-1">Niveaux de risque :</span>
-            {[
-              { risk: "low",      color: "#00B894", label: "Faible (< 50)" },
-              { risk: "moderate", color: "#FDCB6E", label: "Modéré (50–100)" },
-              { risk: "high",     color: "#E17055", label: "Élevé (100–200)" },
-              { risk: "extreme",  color: "#D63031", label: "Extrême (> 200)" },
-            ].map(({ color, label }) => (
-              <span key={label} className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: color, opacity: 0.85 }} />
-                {label} m³/s
-              </span>
-            ))}
-            <span className="w-px h-3 bg-border" />
-            <span className="flex items-center gap-1">
-              <span className="w-5 inline-block border-t-2 border-dashed border-[#94A3B8]" />
-              Passé
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-5 inline-block border-t-2 border-[#94A3B8]" />
-              Futur
-            </span>
-            <span className="flex items-center gap-1 ml-1">
-              <span className="w-5 inline-block border-t-2 border-dashed border-red-400" />
-              Prob. inondation (axe →)
-            </span>
-          </div>
-
-          <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={predChart} margin={{ top: 10, right: 48, left: 0, bottom: 0 }}>
-              {/* Colored risk zone backgrounds */}
-              <ReferenceArea yAxisId="q" y1={0}                          y2={RISK_THRESHOLDS.moderate} fill="#00B894" fillOpacity={0.05} />
-              <ReferenceArea yAxisId="q" y1={RISK_THRESHOLDS.moderate}   y2={RISK_THRESHOLDS.high}    fill="#FDCB6E" fillOpacity={0.07} />
-              <ReferenceArea yAxisId="q" y1={RISK_THRESHOLDS.high}       y2={RISK_THRESHOLDS.extreme} fill="#E17055" fillOpacity={0.07} />
-              <ReferenceArea yAxisId="q" y1={RISK_THRESHOLDS.extreme}    y2={9999}                    fill="#D63031" fillOpacity={0.07} />
-
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
-                interval={Math.max(0, Math.floor(predChart.length / 10) - 1)} axisLine={false} tickLine={false} />
-              <YAxis yAxisId="q" tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
-                axisLine={false} tickLine={false} width={44} unit=" m³/s" />
-              <YAxis yAxisId="p" orientation="right" tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
-                axisLine={false} tickLine={false} width={36} unit="%" domain={[0, 100]} />
-
-              <Tooltip
-                content={({ active, payload, label }: any) => {
-                  if (!active || !payload?.length) return null;
-                  const pt = payload[0]?.payload;
-                  const q = pt["Passé prédit (m³/s)"] ?? pt["Futur prédit (m³/s)"];
-                  const prob = pt["Probabilité inondation (%)"];
-                  const discharge = q ?? 0;
-                  const risk = discharge >= RISK_THRESHOLDS.extreme ? "extreme"
-                    : discharge >= RISK_THRESHOLDS.high     ? "high"
-                    : discharge >= RISK_THRESHOLDS.moderate ? "moderate" : "low";
-                  const { label: rl, color: rc } = getFloodRiskLabel(risk);
-                  return (
-                    <div className="bg-card border border-border rounded-lg shadow-lg p-3 text-xs min-w-[180px]">
-                      <p className="font-semibold text-text mb-2">{label}</p>
-                      <p className="text-text-muted">{pt.isFuture ? "🔮 Futur prédit" : "📊 Passé prédit"}</p>
-                      <p className="font-bold text-lg text-text">{formatNumber(q, 2)} <span className="text-xs font-normal text-text-muted">m³/s</span></p>
-                      <p className="mt-1">Risque : <span className="font-bold" style={{ color: rc }}>{rl}</span></p>
-                      {prob != null && (
-                        <div className="mt-2 pt-2 border-t border-border">
-                          <p className="text-text-muted">Probabilité inondation</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <div className="flex-1 bg-border rounded-full h-1.5">
-                              <div className="h-1.5 rounded-full" style={{ width: `${Math.min(prob,100)}%`, backgroundColor: prob > 50 ? "#D63031" : "#F59E0B" }} />
-                            </div>
-                            <span className="font-bold text-text">{prob}%</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }}
-              />
-
-              {/* Today separator */}
-              {predChart.find((d: any) => d.isFuture) && (
-                <ReferenceLine yAxisId="q"
-                  x={predChart.find((d: any) => d.isFuture)?.date}
-                  stroke="#64748B" strokeWidth={1.5} strokeDasharray="6 3"
-                  label={{ value: "Aujourd'hui ▶", fill: "#64748B", fontSize: 9, position: "insideTopLeft", dy: -2 }}
-                />
-              )}
-
-              {/* Risk threshold lines */}
-              <ReferenceLine yAxisId="q" y={RISK_THRESHOLDS.moderate} stroke="#FDCB6E" strokeDasharray="4 2" strokeOpacity={0.8}
-                label={{ value: "Modéré", fill: "#b59b00", fontSize: 9, position: "insideRight", dx: -4 }} />
-              <ReferenceLine yAxisId="q" y={RISK_THRESHOLDS.high}     stroke="#E17055" strokeDasharray="4 2" strokeOpacity={0.8}
-                label={{ value: "Élevé",  fill: "#E17055", fontSize: 9, position: "insideRight", dx: -4 }} />
-              <ReferenceLine yAxisId="q" y={RISK_THRESHOLDS.extreme}  stroke="#D63031" strokeDasharray="4 2" strokeOpacity={0.8}
-                label={{ value: "Extrême", fill: "#D63031", fontSize: 9, position: "insideRight", dx: -4 }} />
-
-              {/* Probability alert threshold */}
-              <ReferenceLine yAxisId="p" y={50} stroke="#D63031" strokeDasharray="3 3" strokeOpacity={0.4} />
-
-              {/* Bars colored by risk */}
-              <Bar yAxisId="q" dataKey="Passé prédit (m³/s)" radius={[4,4,0,0]} maxBarSize={36} strokeDasharray="4 2" strokeWidth={1}>
-                {predChart.map((entry: any, idx: number) => {
-                  const q = entry["Passé prédit (m³/s)"] ?? 0;
-                  const color = q >= RISK_THRESHOLDS.extreme ? "#D63031"
-                    : q >= RISK_THRESHOLDS.high     ? "#E17055"
-                    : q >= RISK_THRESHOLDS.moderate ? "#FDCB6E" : "#00B894";
-                  return <Cell key={`past-${idx}`} fill={color} fillOpacity={0.9} stroke={color} />;
-                })}
-              </Bar>
-              <Bar yAxisId="q" dataKey="Futur prédit (m³/s)" radius={[4,4,0,0]} maxBarSize={36} strokeWidth={1.5}>
-                {predChart.map((entry: any, idx: number) => {
-                  const q = entry["Futur prédit (m³/s)"] ?? 0;
-                  const color = q >= RISK_THRESHOLDS.extreme ? "#D63031"
-                    : q >= RISK_THRESHOLDS.high     ? "#E17055"
-                    : q >= RISK_THRESHOLDS.moderate ? "#FDCB6E" : "#00B894";
-                  return <Cell key={`fut-${idx}`} fill={color} fillOpacity={0.55} stroke={color} />;
-                })}
-              </Bar>
-
-              {/* Probability line */}
-              <Line yAxisId="p" type="monotone" dataKey="Probabilité inondation (%)"
-                stroke="#EF4444" strokeWidth={2} strokeDasharray="5 3" dot={false} activeDot={{ r: 4, fill: "#EF4444" }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-
-          <p className="text-[10px] text-text-muted text-right mt-1 pr-2">
-            {predChart.filter((d: any) => !d.isFuture).length} jours passés · {predChart.filter((d: any) => d.isFuture).length} jours futurs
-            &nbsp;·&nbsp; Barres opaques = passé, translucides = futur &nbsp;·&nbsp; Couleur = niveau de risque du débit
-          </p>
-        </Card>
-      )}
-
       {/* ── Info card ── */}
       <Card title="Comprendre les seuils GloFAS" icon={<Info className="w-4 h-4" />}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { risk: "low",      range: "< 50 m³/s",    desc: "Débit normal, aucun risque significatif" },
-            { risk: "moderate", range: "50–100 m³/s",   desc: "Surveillance recommandée, crues mineures possibles" },
-            { risk: "high",     range: "100–200 m³/s",  desc: "Risque élevé, évacuation préventive possible" },
-            { risk: "extreme",  range: "> 200 m³/s",    desc: "Crue majeure imminente, mesures d'urgence requises" },
+            { risk: "low",      range: `< ${RISK_THRESHOLDS.moderate} m³/s`,                                          desc: "Débit normal, aucun risque significatif" },
+            { risk: "moderate", range: `${RISK_THRESHOLDS.moderate}–${RISK_THRESHOLDS.high} m³/s`,                   desc: "Surveillance recommandée, crues mineures possibles" },
+            { risk: "high",     range: `${RISK_THRESHOLDS.high}–${RISK_THRESHOLDS.extreme} m³/s`,                   desc: "Risque élevé, évacuation préventive possible" },
+            { risk: "extreme",  range: `> ${RISK_THRESHOLDS.extreme} m³/s`,                                          desc: "Crue majeure imminente, mesures d'urgence requises" },
           ].map(({ risk, range, desc }) => {
             const { label, bg, color } = getFloodRiskLabel(risk);
             return (

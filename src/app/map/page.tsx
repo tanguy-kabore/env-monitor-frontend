@@ -6,42 +6,51 @@ import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import MapView from "@/components/MapView";
 import { Map as MapIcon } from "lucide-react";
+import { useThresholds, RISK_COLORS, AQI_COLORS, TEMP_COLORS } from "@/lib/thresholds";
 
 type MapLayer = "weather" | "air_quality" | "flood" | "drought";
 
 export default function MapPage() {
   const [layer, setLayer] = useState<MapLayer>("weather");
+  const thresholds = useThresholds();
 
-  const weatherSummary = useApi(() => api.getWeatherSummary(), []);
-  const aqMap = useApi(() => api.getAirQualityMap(), []);
-  const floodMap = useApi(() => api.getFloodRiskMap(), []);
-  const droughtMap = useApi(() => api.getDroughtMap(), []);
+  const weatherSummary = useApi(() => api.getWeatherSummary(), [], "map-weather");
+  const aqMap = useApi(() => api.getAirQualityMap(), [], "map-aq");
+  const floodMap = useApi(() => api.getFloodRiskMap(), [], "map-flood");
+  const droughtMap = useApi(() => api.getDroughtMap(), [], "map-drought");
 
   const getPoints = () => {
     if (layer === "weather") {
-      return (weatherSummary.data?.data || []).map((d: any) => ({
+      const wsData = weatherSummary.data?.data;
+      return (Array.isArray(wsData) ? wsData : []).filter((d: any) => d?.location).map((d: any) => ({
         id: d.location.external_id,
         name: d.location.name,
         latitude: d.location.latitude,
         longitude: d.location.longitude,
         value: d.current?.temperature || 0,
         label: d.current ? `${d.current.temperature?.toFixed(1)}°C` : "N/A",
-        risk: (d.current?.temperature || 0) > 40 ? "high" : "low",
+        risk: (d.current?.temperature || 0) >= thresholds.temperature.heat_extreme ? "extreme"
+          : (d.current?.temperature || 0) >= thresholds.temperature.heat_warning ? "high"
+          : (d.current?.temperature || 0) <= thresholds.temperature.cold_warning ? "low" : "moderate",
       }));
     }
     if (layer === "air_quality") {
-      return (aqMap.data?.data || []).map((d: any) => ({
+      const aqData = aqMap.data?.data;
+      return (Array.isArray(aqData) ? aqData : []).filter((d: any) => d?.location).map((d: any) => ({
         id: d.location.external_id,
         name: d.location.name,
         latitude: d.location.latitude,
         longitude: d.location.longitude,
         value: d.latest?.aqi || 0,
         label: d.latest ? `AQI: ${d.latest.aqi}` : "N/A",
-        risk: (d.latest?.aqi || 0) > 60 ? "high" : (d.latest?.aqi || 0) > 40 ? "moderate" : "low",
+        risk: (d.latest?.aqi || 0) > thresholds.air_quality.poor     ? "extreme"
+          : (d.latest?.aqi || 0) > thresholds.air_quality.moderate ? "high"
+          : (d.latest?.aqi || 0) > thresholds.air_quality.fair     ? "moderate" : "low",
       }));
     }
     if (layer === "flood") {
-      return (floodMap.data?.data || []).map((d: any) => ({
+      const floodData = floodMap.data?.data;
+      return (Array.isArray(floodData) ? floodData : []).filter((d: any) => d?.location).map((d: any) => ({
         id: d.location.external_id,
         name: d.location.name,
         latitude: d.location.latitude,
@@ -51,7 +60,8 @@ export default function MapPage() {
         risk: d.latest_flood?.flood_risk_level || "low",
       }));
     }
-    return (droughtMap.data?.data || []).map((d: any) => ({
+    const droughtData = droughtMap.data?.data;
+    return (Array.isArray(droughtData) ? droughtData : []).filter((d: any) => d?.location).map((d: any) => ({
       id: d.location.external_id,
       name: d.location.name,
       latitude: d.location.latitude,
@@ -97,14 +107,12 @@ export default function MapPage() {
           height="650px"
           colorFn={(p) => {
             if (layer === "weather") {
-              if ((p.value || 0) > 42) return "#D63031";
-              if ((p.value || 0) > 38) return "#E17055";
-              if ((p.value || 0) > 32) return "#FDCB6E";
-              return "#00B894";
+              if ((p.value || 0) >= thresholds.temperature.heat_extreme) return TEMP_COLORS.heat_extreme.hex;
+              if ((p.value || 0) >= thresholds.temperature.heat_warning) return TEMP_COLORS.heat_warning.hex;
+              if ((p.value || 0) <= thresholds.temperature.cold_warning) return TEMP_COLORS.cold_warning.hex;
+              return TEMP_COLORS.normal.hex;
             }
-            if (p.risk === "extreme" || p.risk === "high") return "#D63031";
-            if (p.risk === "moderate" || p.risk === "severe") return "#FDCB6E";
-            return "#00B894";
+            return RISK_COLORS[(p.risk as keyof typeof RISK_COLORS) ?? "unknown"]?.hex ?? RISK_COLORS.unknown.hex;
           }}
           radiusFn={() => 11}
         />

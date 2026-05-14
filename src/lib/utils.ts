@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { AQI_COLORS, RISK_COLORS, DROUGHT_COLORS, AIR_QUALITY_THRESHOLDS } from "@/lib/thresholds";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -41,31 +42,35 @@ export function formatNumber(num: number | null | undefined, decimals = 1): stri
   return num.toFixed(decimals);
 }
 
-export function getAqiLabel(aqi: number | null): { label: string; color: string; bg: string } {
-  if (aqi === null) return { label: "Inconnu", color: "text-gray-500", bg: "bg-gray-100" };
-  if (aqi <= 20) return { label: "Bon", color: "text-green-700", bg: "bg-green-100" };
-  if (aqi <= 40) return { label: "Acceptable", color: "text-lime-700", bg: "bg-lime-100" };
-  if (aqi <= 60) return { label: "Modéré", color: "text-yellow-700", bg: "bg-yellow-100" };
-  if (aqi <= 80) return { label: "Mauvais", color: "text-orange-700", bg: "bg-orange-100" };
-  return { label: "Très mauvais", color: "text-red-700", bg: "bg-red-100" };
+export function getAqiLabel(
+  aqi: number | null,
+  t = AIR_QUALITY_THRESHOLDS,
+): { label: string; color: string; bg: string; hex: string } {
+  if (aqi === null) return { label: "Inconnu", ...AQI_COLORS.unknown };
+  if (aqi <= t.good)     return { label: "Bon",          ...AQI_COLORS.good };
+  if (aqi <= t.fair)     return { label: "Acceptable",   ...AQI_COLORS.fair };
+  if (aqi <= t.moderate) return { label: "Modéré",       ...AQI_COLORS.moderate };
+  if (aqi <= t.poor)     return { label: "Mauvais",      ...AQI_COLORS.poor };
+  return { label: "Très mauvais", ...AQI_COLORS.very_poor };
 }
 
-export function getFloodRiskLabel(level: string | null): { label: string; color: string; bg: string } {
+export function getFloodRiskLabel(level: string | null): { label: string; color: string; bg: string; hex: string } {
   switch (level) {
-    case "low": return { label: "Faible", color: "text-green-700", bg: "bg-green-100" };
-    case "moderate": return { label: "Modéré", color: "text-yellow-700", bg: "bg-yellow-100" };
-    case "high": return { label: "Élevé", color: "text-orange-700", bg: "bg-orange-100" };
-    case "extreme": return { label: "Extrême", color: "text-red-700", bg: "bg-red-100" };
-    default: return { label: "Inconnu", color: "text-gray-500", bg: "bg-gray-100" };
+    case "low":      return { label: "Faible",  ...RISK_COLORS.low };
+    case "moderate": return { label: "Modéré",  ...RISK_COLORS.moderate };
+    case "high":     return { label: "Élevé",   ...RISK_COLORS.high };
+    case "extreme":  return { label: "Extrême", ...RISK_COLORS.extreme };
+    default:         return { label: "Inconnu", ...RISK_COLORS.unknown };
   }
 }
 
-export function getDroughtLabel(level: string | null): { label: string; color: string; bg: string } {
+export function getDroughtLabel(level: string | null): { label: string; color: string; bg: string; hex: string } {
   switch (level) {
-    case "normal": return { label: "Normal", color: "text-green-700", bg: "bg-green-100" };
-    case "moderate": return { label: "Modérée", color: "text-yellow-700", bg: "bg-yellow-100" };
-    case "severe": return { label: "Sévère", color: "text-orange-700", bg: "bg-orange-100" };
-    case "extreme": return { label: "Extrême", color: "text-red-700", bg: "bg-red-100" };
-    default: return { label: "Inconnu", color: "text-gray-500", bg: "bg-gray-100" };
+    case "normal":   return { label: "Normal",   ...DROUGHT_COLORS.normal };
+    case "mild":     return { label: "Anomalie", ...DROUGHT_COLORS.mild };
+    case "moderate": return { label: "Modérée",  ...DROUGHT_COLORS.moderate };
+    case "severe":   return { label: "Sévère",   ...DROUGHT_COLORS.severe };
+    case "extreme":  return { label: "Extrême",  ...DROUGHT_COLORS.extreme };
+    default:         return { label: "Inconnu",  ...DROUGHT_COLORS.unknown };
   }
 }

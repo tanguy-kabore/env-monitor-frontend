@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import LocationSelect from "@/components/LocationSelect";
 import MapView from "@/components/MapView";
 import { formatNumber, formatDate, getDroughtLabel } from "@/lib/utils";
+import { useThresholds, DROUGHT_COLORS, DROUGHT_CHART_COLORS } from "@/lib/thresholds";
 import { 
   Droplets, Sun, CloudRain, AlertTriangle, TrendingDown, 
   Calendar, Clock, Thermometer 
@@ -25,12 +26,14 @@ interface DroughtData {
   drought_level?: string;
 }
 
-function getSPIStatus(spi: number) {
-  if (spi <= -2) return { label: "Extrême", color: "#D63031", bg: "bg-red-100", text: "text-red-700", border: "border-red-200" };
-  if (spi <= -1.5) return { label: "Sévère", color: "#E17055", bg: "bg-orange-100", text: "text-orange-700", border: "border-orange-200" };
-  if (spi <= -1) return { label: "Modérée", color: "#F59E0B", bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" };
-  if (spi < 0) return { label: "Anomalie sèche", color: "#60A5FA", bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" };
-  return { label: "Normale", color: "#10B981", bg: "bg-green-100", text: "text-green-700", border: "border-green-200" };
+function makeSPIStatus(t: { moderate: number; severe: number; extreme: number }) {
+  return function getSPIStatus(spi: number) {
+    if (spi <= t.extreme)  return { label: "Extrême",      color: DROUGHT_COLORS.extreme.hex,  bg: DROUGHT_COLORS.extreme.bg,  text: DROUGHT_COLORS.extreme.color,  border: DROUGHT_COLORS.extreme.border };
+    if (spi <= t.severe)   return { label: "Sévère",        color: DROUGHT_COLORS.severe.hex,   bg: DROUGHT_COLORS.severe.bg,   text: DROUGHT_COLORS.severe.color,   border: DROUGHT_COLORS.severe.border };
+    if (spi <= t.moderate) return { label: "Modérée",       color: DROUGHT_COLORS.moderate.hex, bg: DROUGHT_COLORS.moderate.bg, text: DROUGHT_COLORS.moderate.color, border: DROUGHT_COLORS.moderate.border };
+    if (spi < 0)           return { label: "Anomalie sèche", color: DROUGHT_COLORS.mild.hex,     bg: DROUGHT_COLORS.mild.bg,     text: DROUGHT_COLORS.mild.color,     border: DROUGHT_COLORS.mild.border };
+    return { label: "Normale", color: DROUGHT_COLORS.normal.hex, bg: DROUGHT_COLORS.normal.bg, text: DROUGHT_COLORS.normal.color, border: DROUGHT_COLORS.normal.border };
+  };
 }
 
 function formatShortDate(dateStr: string) {
@@ -50,11 +53,14 @@ export default function DroughtPage() {
   const [locationId, setLocationId] = useState("ouagadougou");
   const [locationName, setLocationName] = useState("Ouagadougou");
   const [daysRange, setDaysRange] = useState(180);
+  const thresholds = useThresholds();
+  const dt = thresholds.drought;
+  const getSPIStatus = makeSPIStatus(dt);
 
-  const history = useApi(() => api.getDroughtHistory(locationId, daysRange), [locationId, daysRange]);
-  const droughtMap = useApi(() => api.getDroughtMap(), []);
+  const history = useApi(() => api.getDroughtHistory(locationId, daysRange), [locationId, daysRange], "drought-history");
+  const droughtMap = useApi(() => api.getDroughtMap(), [], "drought-map");
 
-  const rawData: DroughtData[] = history.data?.data || [];
+  const rawData: DroughtData[] = Array.isArray(history.data?.data) ? history.data?.data : [];
 
   // KPI calculations
   const kpis = useMemo(() => {
@@ -77,7 +83,7 @@ export default function DroughtPage() {
     let maxDroughtDays = 0;
     let currentDroughtDays = 0;
     for (const d of rawData) {
-      if (d.spi_value < -1) {
+      if (d.spi_value < dt.moderate) {
         currentDroughtDays++;
         maxDroughtDays = Math.max(maxDroughtDays, currentDroughtDays);
       } else {
@@ -108,13 +114,13 @@ export default function DroughtPage() {
     let maxSeverity = 0;
 
     for (const d of rawData) {
-      if (d.spi_value < -1 && !inDrought) {
+      if (d.spi_value < dt.moderate && !inDrought) {
         inDrought = true;
         startDate = d.observed_at;
         maxSeverity = d.spi_value;
-      } else if (d.spi_value < -1 && inDrought) {
+      } else if (d.spi_value < dt.moderate && inDrought) {
         maxSeverity = Math.min(maxSeverity, d.spi_value);
-      } else if (d.spi_value >= -1 && inDrought) {
+      } else if (d.spi_value >= dt.moderate && inDrought) {
         inDrought = false;
         const duration = Math.ceil(
           (new Date(d.observed_at).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
@@ -142,7 +148,10 @@ export default function DroughtPage() {
     status: getSPIStatus(d.spi_value).label,
   }));
 
-  const mapPoints = (droughtMap.data?.data || []).map((d: any) => ({
+  const droughtMapData = droughtMap.data?.data;
+  const mapPoints = (Array.isArray(droughtMapData) ? droughtMapData : [])
+    .filter((d: any) => d?.location)
+    .map((d: any) => ({
     id: d.location.external_id,
     name: d.location.name,
     latitude: d.location.latitude,
@@ -257,23 +266,16 @@ export default function DroughtPage() {
         <MapView
           points={mapPoints}
           height="380px"
-          colorFn={(p) => {
-            const r = p.risk;
-            if (r === "extreme") return "#D63031";
-            if (r === "severe") return "#E17055";
-            if (r === "moderate") return "#F59E0B";
-            if (r === "mild") return "#3B82F6";
-            return "#10B981";
-          }}
+          colorFn={(p) => DROUGHT_COLORS[(p.risk as keyof typeof DROUGHT_COLORS) ?? "normal"]?.hex ?? DROUGHT_COLORS.normal.hex}
           radiusFn={() => 10}
         />
         <div className="flex flex-wrap gap-2 mt-4 justify-center">
           {[
-            { label: "Normale", color: "#10B981", bg: "bg-green-100", text: "text-green-700" },
-            { label: "Anomalie sèche", color: "#3B82F6", bg: "bg-blue-100", text: "text-blue-700" },
-            { label: "Modérée", color: "#F59E0B", bg: "bg-amber-100", text: "text-amber-700" },
-            { label: "Sévère", color: "#E17055", bg: "bg-orange-100", text: "text-orange-700" },
-            { label: "Extrême", color: "#D63031", bg: "bg-red-100", text: "text-red-700" },
+            { label: "Normale",        color: DROUGHT_COLORS.normal.hex,   bg: DROUGHT_COLORS.normal.bg,   text: DROUGHT_COLORS.normal.color },
+            { label: "Anomalie sèche", color: DROUGHT_COLORS.mild.hex,     bg: DROUGHT_COLORS.mild.bg,     text: DROUGHT_COLORS.mild.color },
+            { label: "Modérée",        color: DROUGHT_COLORS.moderate.hex, bg: DROUGHT_COLORS.moderate.bg, text: DROUGHT_COLORS.moderate.color },
+            { label: "Sévère",         color: DROUGHT_COLORS.severe.hex,   bg: DROUGHT_COLORS.severe.bg,   text: DROUGHT_COLORS.severe.color },
+            { label: "Extrême",         color: DROUGHT_COLORS.extreme.hex,  bg: DROUGHT_COLORS.extreme.bg,  text: DROUGHT_COLORS.extreme.color },
           ].map((s) => (
             <span key={s.label} className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full ${s.bg} ${s.text} border`}>
               <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
@@ -295,12 +297,12 @@ export default function DroughtPage() {
               <ComposedChart data={historyChart} margin={{ top: 30, right: 50, left: 10, bottom: 20 }}>
                 <defs>
                   <linearGradient id="spiNormal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0.05}/>
+                    <stop offset="5%" stopColor={DROUGHT_CHART_COLORS.spi_fill} stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor={DROUGHT_CHART_COLORS.spi_fill} stopOpacity={0.05}/>
                   </linearGradient>
                 </defs>
                 
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 
                 <XAxis 
                   dataKey="date" 
@@ -341,36 +343,36 @@ export default function DroughtPage() {
                 />
                 
                 {/* Zones de référence */}
-                <ReferenceArea y1={0} y2={1} stroke="#10B981" strokeOpacity={0.3} fill="#10B981" fillOpacity={0.05} />
-                <ReferenceArea y1={-1} y2={0} stroke="#3B82F6" strokeOpacity={0.3} fill="#3B82F6" fillOpacity={0.05} />
-                <ReferenceArea y1={-1.5} y2={-1} stroke="#F59E0B" strokeOpacity={0.3} fill="#F59E0B" fillOpacity={0.05} />
-                <ReferenceArea y1={-2} y2={-1.5} stroke="#E17055" strokeOpacity={0.3} fill="#E17055" fillOpacity={0.05} />
-                <ReferenceArea y1={-2.5} y2={-2} stroke="#D63031" strokeOpacity={0.3} fill="#D63031" fillOpacity={0.05} />
-                
+                <ReferenceArea y1={0}          y2={1}           stroke={DROUGHT_COLORS.normal.hex}   strokeOpacity={0.3} fill={DROUGHT_COLORS.normal.hex}   fillOpacity={0.05} />
+                <ReferenceArea y1={dt.moderate} y2={0}           stroke={DROUGHT_COLORS.mild.hex}     strokeOpacity={0.3} fill={DROUGHT_COLORS.mild.hex}     fillOpacity={0.05} />
+                <ReferenceArea y1={dt.severe}   y2={dt.moderate} stroke={DROUGHT_COLORS.moderate.hex} strokeOpacity={0.3} fill={DROUGHT_COLORS.moderate.hex} fillOpacity={0.05} />
+                <ReferenceArea y1={dt.extreme}  y2={dt.severe}   stroke={DROUGHT_COLORS.severe.hex}   strokeOpacity={0.3} fill={DROUGHT_COLORS.severe.hex}   fillOpacity={0.05} />
+                <ReferenceArea y1={-2.5}        y2={dt.extreme}  stroke={DROUGHT_COLORS.extreme.hex}  strokeOpacity={0.3} fill={DROUGHT_COLORS.extreme.hex}  fillOpacity={0.05} />
+
                 {/* Lignes de seuil avec labels au-dessus */}
-                <ReferenceLine y={0} stroke="#10B981" strokeDasharray="3 3" strokeWidth={1.5}>
-                  <Label value="Normale" position="top" fill="#10B981" fontSize={10} dx={5} />
+                <ReferenceLine y={0}          stroke={DROUGHT_COLORS.normal.hex}   strokeDasharray="3 3" strokeWidth={1.5}>
+                  <Label value="Normale"  position="top" fill={DROUGHT_COLORS.normal.hex}   fontSize={10} dx={5} />
                 </ReferenceLine>
-                <ReferenceLine y={-1} stroke="#F59E0B" strokeDasharray="5 5" strokeWidth={1.5}>
-                  <Label value="Modérée" position="top" fill="#F59E0B" fontSize={10} dx={5} />
+                <ReferenceLine y={dt.moderate} stroke={DROUGHT_COLORS.moderate.hex} strokeDasharray="5 5" strokeWidth={1.5}>
+                  <Label value="Modérée" position="top" fill={DROUGHT_COLORS.moderate.hex} fontSize={10} dx={5} />
                 </ReferenceLine>
-                <ReferenceLine y={-1.5} stroke="#E17055" strokeDasharray="5 5" strokeWidth={1.5}>
-                  <Label value="Sévère" position="top" fill="#E17055" fontSize={10} dx={5} />
+                <ReferenceLine y={dt.severe}   stroke={DROUGHT_COLORS.severe.hex}   strokeDasharray="5 5" strokeWidth={1.5}>
+                  <Label value="Sévère"  position="top" fill={DROUGHT_COLORS.severe.hex}   fontSize={10} dx={5} />
                 </ReferenceLine>
-                <ReferenceLine y={-2} stroke="#D63031" strokeDasharray="5 5" strokeWidth={1.5}>
-                  <Label value="Extrême" position="top" fill="#D63031" fontSize={10} dx={5} />
+                <ReferenceLine y={dt.extreme}  stroke={DROUGHT_COLORS.extreme.hex}  strokeDasharray="5 5" strokeWidth={1.5}>
+                  <Label value="Extrême" position="top" fill={DROUGHT_COLORS.extreme.hex}  fontSize={10} dx={5} />
                 </ReferenceLine>
                 
                 {/* Ligne SPI */}
                 <Area 
                   type="monotone" 
                   dataKey="SPI" 
-                  stroke="#E8A838" 
+                  stroke={DROUGHT_CHART_COLORS.spi_line} 
                   strokeWidth={3}
                   fill="url(#spiNormal)"
                   dot={(p: any) => {
                     const val = p.payload?.SPI;
-                    const color = val < -2 ? "#D63031" : val < -1.5 ? "#E17055" : val < -1 ? "#F59E0B" : val < 0 ? "#3B82F6" : "#10B981";
+                    const color = val < dt.extreme ? DROUGHT_COLORS.extreme.hex : val < dt.severe ? DROUGHT_COLORS.severe.hex : val < dt.moderate ? DROUGHT_COLORS.moderate.hex : val < 0 ? DROUGHT_COLORS.mild.hex : DROUGHT_COLORS.normal.hex;
                     return <circle key={`dot-${p.index}`} cx={p.cx} cy={p.cy} r={4} fill={color} stroke="#fff" strokeWidth={1.5} />;
                   }}
                   activeDot={{ r: 6, stroke: "#fff", strokeWidth: 2 }}
@@ -410,7 +412,7 @@ export default function DroughtPage() {
           >
             <ResponsiveContainer width="100%" height={260}>
               <ComposedChart data={historyChart} margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis 
                   dataKey="date" 
                   tick={{ fontSize: 10 }} 
@@ -435,7 +437,7 @@ export default function DroughtPage() {
                   yAxisId="left"
                   dataKey="precip30" 
                   name="30 jours" 
-                  fill="#93C5FD" 
+                  fill={DROUGHT_CHART_COLORS.precip_30d} 
                   radius={[2, 2, 0, 0]}
                   opacity={0.8}
                 />
@@ -444,7 +446,7 @@ export default function DroughtPage() {
                   type="monotone" 
                   dataKey="precip90" 
                   name="90 jours" 
-                  stroke="#1B6FA8" 
+                  stroke={DROUGHT_CHART_COLORS.precip_90d} 
                   strokeWidth={2.5}
                   dot={false}
                 />
@@ -497,7 +499,7 @@ export default function DroughtPage() {
                             </span>
                           </td>
                           <td className="py-2.5 px-3 font-mono">
-                            <span className={ep.maxSeverity < -1.5 ? "text-red-600 font-bold" : ep.maxSeverity < -1 ? "text-amber-600" : "text-blue-600"}>
+                            <span className={ep.maxSeverity < dt.severe ? "text-red-600 font-bold" : ep.maxSeverity < dt.moderate ? "text-amber-600" : "text-blue-600"}>
                               {ep.maxSeverity.toFixed(2)}
                             </span>
                           </td>

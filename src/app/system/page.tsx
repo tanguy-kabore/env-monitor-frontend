@@ -4,14 +4,14 @@ import { useApi } from "@/hooks/useApi";
 import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { formatDateTime } from "@/lib/utils";
-import { Settings, Database, Cpu, Clock, Play, RefreshCw, Search, ChevronDown, ChevronUp, SlidersHorizontal, Trash2, AlertOctagon } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Settings, Database, Cpu, Clock, Play, RefreshCw, Search, ChevronDown, ChevronUp, SlidersHorizontal, Trash2, AlertOctagon, CheckCircle2, Wind, Waves, Droplets, Thermometer, Bell, Zap, Brain, CloudDownload, Activity } from "lucide-react";
+import React, { useState, useEffect } from "react";
 
 export default function SystemPage() {
-  const status = useApi(() => api.getStatus(), []);
-  const models = useApi(() => api.getModels(), []);
-  const logs = useApi(() => api.getCollectionLog(50), []);
-  const cities = useApi(() => api.getCities(), []);
+  const status = useApi(() => api.getStatus(), [], "system-status");
+  const models = useApi(() => api.getModels(), [], "system-models");
+  const logs = useApi(() => api.getCollectionLog(50), [], "system-logs");
+  const cities = useApi(() => api.getCities(), [], "system-cities");
   const [actionMsg, setActionMsg] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [resetDone, setResetDone] = useState(false);
@@ -38,8 +38,9 @@ export default function SystemPage() {
     }
   };
 
+  const citiesData = cities.data?.data;
   const cityMap = Object.fromEntries(
-    (cities.data?.data || []).map((c: any) => [c.id, c.name])
+    (Array.isArray(citiesData) ? citiesData : []).map((c: any) => [c.id, c.name])
   );
 
   const triggerAction = async (action: string, label: string) => {
@@ -72,144 +73,200 @@ export default function SystemPage() {
     }
   }, [statusData?.initialized, totalRecords, resetDone]);
 
+  const isInitialized = !!statusData?.initialized;
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Settings className="w-7 h-7 text-text-secondary" /> Administration Système
           </h1>
-          <p className="text-sm text-text-secondary mt-1">Gestion des collectes, modèles ML et état du système</p>
+          <p className="text-sm text-text-secondary mt-1">Collectes, modèles ML, tâches planifiées et état du système</p>
         </div>
         {actionMsg && (
-          <span className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-full animate-fade-in">{actionMsg}</span>
+          <span className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-full animate-fade-in border border-primary/20 font-medium">
+            {actionMsg}
+          </span>
         )}
       </div>
 
       {status.loading ? <LoadingSpinner /> : (
         <>
-          {/* System info */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                  <Database className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Statut</p>
-                  <p className="font-semibold text-sm">{statusData?.initialized ? "Initialisé" : "Non initialisé"}</p>
-                </div>
+          {/* ── 1. STATUS KPI CARDS ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Initialized */}
+            <div className={`rounded-xl border p-4 flex items-center gap-4 ${isInitialized ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200"}`}>
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isInitialized ? "bg-green-100" : "bg-orange-100"}`}>
+                {isInitialized
+                  ? <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  : <AlertOctagon className="w-5 h-5 text-orange-500" />}
               </div>
-            </Card>
-            <Card>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Dernière collecte historique</p>
-                  <p className="font-semibold text-xs">{statusData?.last_historical_load ? formatDateTime(statusData.last_historical_load) : "Jamais"}</p>
-                </div>
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium">Statut système</p>
+                <p className={`font-bold text-sm mt-0.5 ${isInitialized ? "text-green-700" : "text-orange-600"}`}>
+                  {isInitialized ? "Initialisé" : "Non initialisé"}
+                </p>
               </div>
-            </Card>
-            <Card>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
-                  <Cpu className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted">Dernier entraînement</p>
-                  <p className="font-semibold text-xs">{statusData?.last_model_training ? formatDateTime(statusData.last_model_training) : "Jamais"}</p>
-                </div>
+            </div>
+
+            {/* Last historical load */}
+            <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                <CloudDownload className="w-5 h-5 text-blue-600" />
               </div>
-            </Card>
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium">Dernière collecte historique</p>
+                <p className="font-semibold text-xs mt-0.5 text-text">
+                  {statusData?.last_historical_load ? formatDateTime(statusData.last_historical_load) : <span className="text-text-muted italic">Jamais</span>}
+                </p>
+              </div>
+            </div>
+
+            {/* Last training */}
+            <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
+                <Brain className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium">Dernier entraînement ML</p>
+                <p className="font-semibold text-xs mt-0.5 text-text">
+                  {statusData?.last_model_training ? formatDateTime(statusData.last_model_training) : <span className="text-text-muted italic">Jamais</span>}
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Data counts */}
-          <Card title="Données en base" icon={<Database className="w-5 h-5" />}>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Object.entries(dataCounts).map(([table, count]) => (
-                <div key={table} className={`rounded-lg p-3 text-center ${Number(count) === 0 ? "bg-orange-50 border border-orange-100" : "bg-bg"}`}
-                  title={Number(count) === 0 ? "Aucune donnée — collecte ou entraînement requis" : undefined}>
-                  <p className={`text-lg font-bold ${Number(count) === 0 ? "text-orange-400" : "text-primary"}`}>{String(count)}</p>
-                  <p className="text-[10px] text-text-muted mt-0.5">{table.replace(/_/g, " ")}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Scheduled jobs */}
-          {statusData?.scheduled_jobs?.length > 0 && (
-            <Card title="Tâches automatiques" icon={<Clock className="w-5 h-5" />}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {statusData.scheduled_jobs.map((job: any) => {
-                  const isAlert = job.id === "generate_alerts";
-                  return (
-                    <div key={job.id} className={`flex items-start gap-3 px-3 py-3 rounded-lg border text-xs ${isAlert ? "border-red-200 bg-red-50/40" : "border-border bg-background/50"}`}>
-                      <span className="text-base leading-none mt-0.5 shrink-0">{job.icon || "⚙️"}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-text">{job.name}</p>
-                        {job.description && <p className="text-text-muted mt-0.5">{job.description}</p>}
-                        <div className="flex flex-wrap items-center gap-3 mt-1.5">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium border text-[10px] ${isAlert ? "bg-red-100 text-red-700 border-red-200" : "bg-blue-50 text-blue-700 border-blue-100"}`}>
-                            🔁 {job.interval_label}
-                          </span>
-                          {job.next_run && (
-                            <span className="text-text-muted text-[10px]">
-                              Prochaine exécution : <strong className="text-text">{formatDateTime(job.next_run)}</strong>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* ── 2. INIT BANNER (if not initialized) ── */}
+          {!isInitialized && (
+            <div className="flex items-center gap-4 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+              <AlertOctagon className="w-5 h-5 text-orange-500 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-orange-700">Système non initialisé</p>
+                <p className="text-xs text-orange-500 mt-0.5">
+                  {(totalRecords as number) > 0
+                    ? "Des données existent en base — correction automatique du statut en cours…"
+                    : "Lancez l'initialisation pour charger les données historiques et entraîner les modèles."}
+                </p>
               </div>
-            </Card>
-          )}
-
-          {/* Initialize */}
-          {!statusData?.initialized && (
-            <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl text-sm">
-              <span className="text-orange-600 font-medium">⚠️ Statut non initialisé</span>
               {(totalRecords as number) > 0 ? (
-                <>
-                  <span className="text-orange-500 text-xs flex-1">Des données existent en base — correction du statut automatique en cours...</span>
-                  <ActionButton label="Corriger le statut" onClick={async () => { setActionLoading("reset"); try { await api.resetStatus(); await status.refetch(); setActionMsg("✓ Statut corrigé"); } catch(e: any) { setActionMsg(`Erreur: ${e.message}`); } finally { setActionLoading(null); } setTimeout(() => setActionMsg(""), 4000); }} color="bg-orange-500" loading={actionLoading === "reset"} />
-                </>
+                <ActionButton label="Corriger le statut" onClick={async () => { setActionLoading("reset"); try { await api.resetStatus(); await status.refetch(); setActionMsg("✓ Statut corrigé"); } catch(e: any) { setActionMsg(`Erreur: ${e.message}`); } finally { setActionLoading(null); } setTimeout(() => setActionMsg(""), 4000); }} color="bg-orange-500" loading={actionLoading === "reset"} />
               ) : (
-                <>
-                  <span className="text-orange-500 text-xs flex-1">Cliquez Initialiser pour charger les données historiques et entraîner les modèles.</span>
-                  <ActionButton label="Initialiser" onClick={async () => { setActionLoading("init"); setActionMsg("Initialisation en cours..."); try { await api.initialize(); setActionMsg("✓ Initialisation démarrée en arrière-plan"); setTimeout(() => status.refetch(), 5000); } catch(e: any) { setActionMsg(`Erreur: ${e.message}`); } finally { setActionLoading(null); } setTimeout(() => setActionMsg(""), 8000); }} color="bg-orange-500" loading={actionLoading === "init"} />
-                </>
+                <ActionButton label="Initialiser le système" onClick={async () => { setActionLoading("init"); setActionMsg("Initialisation en cours..."); try { await api.initialize(); setActionMsg("✓ Initialisation démarrée en arrière-plan"); setTimeout(() => status.refetch(), 5000); } catch(e: any) { setActionMsg(`Erreur: ${e.message}`); } finally { setActionLoading(null); } setTimeout(() => setActionMsg(""), 8000); }} color="bg-orange-500" loading={actionLoading === "init"} />
               )}
             </div>
           )}
 
-          {/* Actions */}
-          <Card title="Actions manuelles" icon={<Play className="w-5 h-5" />}>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <ActionButton label="Collecter Météo" onClick={() => triggerAction("weather", "Collecte météo")} loading={actionLoading === "weather"} />
-              <ActionButton label="Collecter Qualité de l'air" onClick={() => triggerAction("air-quality", "Collecte qualité air")} loading={actionLoading === "air-quality"} />
-              <ActionButton label="Collecter Inondations" onClick={() => triggerAction("flood", "Collecte inondations")} loading={actionLoading === "flood"} />
-              <ActionButton label="Collecter Climat" onClick={() => triggerAction("climate", "Collecte climat")} loading={actionLoading === "climate"} />
-              <ActionButton label="Calculer Sécheresse" onClick={() => triggerAction("drought", "Calcul sécheresse")} color="bg-amber-600" loading={actionLoading === "drought"} />
-              <ActionButton label="Collecter Tout" onClick={() => triggerAction("all", "Collecte complète")} color="bg-secondary" loading={actionLoading === "all"} />
-              <ActionButton label="Entraîner modèles" onClick={() => triggerAction("train", "Entraînement")} color="bg-purple-600" loading={actionLoading === "train"} />
-              <ActionButton label="Générer alertes" onClick={async () => {
-                setActionLoading("alerts");
-                setActionMsg("Génération des alertes...");
-                try {
-                  const r = await api.generateAlerts();
-                  setActionMsg(`✓ ${r.created} alertes créées, ${r.resolved} résolues — ${r.active_total} actives`);
-                } catch (e: any) { setActionMsg(`Erreur: ${e.message}`); }
-                finally { setActionLoading(null); }
-                setTimeout(() => setActionMsg(""), 6000);
-              }} color="bg-red-600" loading={actionLoading === "alerts"} />
+          {/* ── 3. DATA COUNTS ── */}
+          <Card title="Données en base" icon={<Database className="w-4 h-4" />}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              {Object.entries(dataCounts).map(([table, count]) => {
+                const isEmpty = Number(count) === 0;
+                return (
+                  <div key={table} className={`rounded-lg p-3 text-center border ${isEmpty ? "bg-orange-50 border-orange-100" : "bg-bg border-border"}`}
+                    title={isEmpty ? "Aucune donnée — collecte ou entraînement requis" : undefined}>
+                    <p className={`text-xl font-bold tabular-nums ${isEmpty ? "text-orange-400" : "text-primary"}`}>{Number(count).toLocaleString()}</p>
+                    <p className="text-[10px] text-text-muted mt-1 leading-tight">{table.replace(/_/g, " ")}</p>
+                    {isEmpty && <p className="text-[9px] text-orange-400 mt-0.5">Vide</p>}
+                  </div>
+                );
+              })}
             </div>
           </Card>
 
-          {/* Models */}
+          {/* ── 4. MANUAL ACTIONS ── */}
+          <Card title="Actions manuelles" icon={<Play className="w-4 h-4" />}>
+            <div className="space-y-4">
+              {/* Collect group */}
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium mb-2">Collecte de données</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                  <ActionButton icon={<Thermometer className="w-3.5 h-3.5" />} label="Météo"           onClick={() => triggerAction("weather",     "Collecte météo")}         loading={actionLoading === "weather"} />
+                  <ActionButton icon={<Wind         className="w-3.5 h-3.5" />} label="Qualité air"    onClick={() => triggerAction("air-quality", "Collecte qualité air")}   loading={actionLoading === "air-quality"} />
+                  <ActionButton icon={<Waves        className="w-3.5 h-3.5" />} label="Inondations"    onClick={() => triggerAction("flood",       "Collecte inondations")}   loading={actionLoading === "flood"} />
+                  <ActionButton icon={<Droplets     className="w-3.5 h-3.5" />} label="Climat"         onClick={() => triggerAction("climate",     "Collecte climat")}        loading={actionLoading === "climate"} />
+                  <ActionButton icon={<Activity     className="w-3.5 h-3.5" />} label="Sécheresse"     onClick={() => triggerAction("drought",     "Calcul sécheresse")}      loading={actionLoading === "drought"} color="bg-amber-600" />
+                </div>
+              </div>
+
+              <div className="border-t border-border" />
+
+              {/* System group */}
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium mb-2">Opérations système</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <ActionButton icon={<Zap   className="w-3.5 h-3.5" />} label="Collecter tout"   onClick={() => triggerAction("all", "Collecte complète")} loading={actionLoading === "all"} color="bg-secondary" />
+                  <ActionButton icon={<Brain className="w-3.5 h-3.5" />} label="Entraîner modèles" onClick={() => triggerAction("train", "Entraînement")}   loading={actionLoading === "train"} color="bg-purple-600" />
+                  <ActionButton icon={<Bell  className="w-3.5 h-3.5" />} label="Générer alertes"  onClick={async () => {
+                    setActionLoading("alerts");
+                    setActionMsg("Génération des alertes...");
+                    try {
+                      const r = await api.generateAlerts();
+                      setActionMsg(`✓ ${r.created} alertes créées, ${r.resolved} résolues — ${r.active_total} actives`);
+                    } catch (e: any) { setActionMsg(`Erreur: ${e.message}`); }
+                    finally { setActionLoading(null); }
+                    setTimeout(() => setActionMsg(""), 6000);
+                  }} loading={actionLoading === "alerts"} color="bg-red-600" />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* ── 5. SCHEDULED JOBS ── */}
+          {statusData?.scheduled_jobs?.length > 0 && (() => {
+            const JOB_ICON_MAP: Record<string, { icon: React.ReactNode; bg: string; color: string }> = {
+              collect_weather:    { icon: <Thermometer className="w-4 h-4" />, bg: "bg-sky-100",    color: "text-sky-600" },
+              collect_air_quality:{ icon: <Wind         className="w-4 h-4" />, bg: "bg-teal-100",  color: "text-teal-600" },
+              collect_flood:      { icon: <Waves        className="w-4 h-4" />, bg: "bg-blue-100",  color: "text-blue-600" },
+              collect_climate:    { icon: <Droplets     className="w-4 h-4" />, bg: "bg-indigo-100",color: "text-indigo-600" },
+              compute_drought:    { icon: <Activity     className="w-4 h-4" />, bg: "bg-amber-100", color: "text-amber-600" },
+              generate_alerts:    { icon: <Bell         className="w-4 h-4" />, bg: "bg-red-100",   color: "text-red-600" },
+              retrain_models:     { icon: <Brain        className="w-4 h-4" />, bg: "bg-purple-100",color: "text-purple-600" },
+              generate_predictions:{ icon: <Zap         className="w-4 h-4" />, bg: "bg-violet-100",color: "text-violet-600" },
+              archive_alerts:     { icon: <Database     className="w-4 h-4" />, bg: "bg-gray-100",  color: "text-gray-500" },
+            };
+            return (
+              <Card title="Tâches planifiées" icon={<Clock className="w-4 h-4" />}
+                subtitle={`${statusData.scheduled_jobs.length} tâches actives`}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {statusData.scheduled_jobs.map((job: any) => {
+                    const isAlert = job.id === "generate_alerts";
+                    const cfg = JOB_ICON_MAP[job.id] || { icon: <Settings className="w-4 h-4" />, bg: "bg-gray-100", color: "text-gray-500" };
+                    return (
+                      <div key={job.id} className={`flex items-start gap-3 p-4 rounded-xl border text-xs transition hover:shadow-sm ${isAlert ? "border-red-200 bg-red-50/20" : "border-border bg-card"}`}>
+                        {/* Icon */}
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
+                          <span className={cfg.color}>{cfg.icon}</span>
+                        </div>
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-text text-[13px] leading-tight">{job.name}</p>
+                          {job.description && (
+                            <p className="text-text-muted mt-0.5 text-[11px] leading-snug">{job.description}</p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium border text-[10px] ${isAlert ? "bg-red-100 text-red-700 border-red-200" : "bg-blue-50 text-blue-700 border-blue-100"}`}>
+                              <RefreshCw className="w-2.5 h-2.5" /> {job.interval_label}
+                            </span>
+                            {job.next_run && (
+                              <span className="text-text-muted text-[10px] flex items-center gap-1">
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>Prochaine : <strong className="text-text">{formatDateTime(job.next_run)}</strong></span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}
+
+          {/* ── 6. MODELS ── */}
           <ModelsCard models={models} cityMap={cityMap} onCleanup={async () => {
             setActionLoading("cleanup");
             setActionMsg("Dédoublonnage en cours...");
@@ -222,18 +279,24 @@ export default function SystemPage() {
             setTimeout(() => setActionMsg(""), 6000);
           }} cleanupLoading={actionLoading === "cleanup"} />
 
-          {/* Danger zone */}
-          <div className="border-2 border-red-200 rounded-xl p-5 bg-red-50/30">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <AlertOctagon className="w-5 h-5 text-red-500 shrink-0" />
-                <div>
-                  <h3 className="text-sm font-semibold text-red-700">Zone dangereuse</h3>
-                  <p className="text-xs text-red-500 mt-0.5">Supprimer toutes les données collectées, modèles ML, alertes et journaux. Irréversible.</p>
-                </div>
-              </div>
+          {/* ── 7. COLLECTION LOG ── */}
+          {!logs.loading && Array.isArray(logs.data?.data) && logs.data?.data.length > 0 && (
+            <CollectionLogCard logs={logs.data?.data} onCleanup={() => logs.refetch()} />
+          )}
+
+          {/* ── 8. DANGER ZONE ── */}
+          <div className="rounded-xl border-2 border-dashed border-red-200 bg-red-50/20 p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertOctagon className="w-4 h-4 text-red-500" />
+              <h3 className="text-sm font-semibold text-red-700">Zone dangereuse</h3>
+            </div>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <p className="text-xs text-red-500 max-w-lg">
+                Supprime <strong>toutes les données collectées</strong>, modèles ML, alertes et journaux de manière <strong>irréversible</strong>.
+                À utiliser uniquement pour réinitialiser complètement le système.
+              </p>
               <button onClick={() => { setShowResetConfirm(true); setResetConfirmText(""); setResetAllResult(null); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition">
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition shrink-0">
                 <Trash2 className="w-3.5 h-3.5" /> Vider la base de données
               </button>
             </div>
@@ -249,23 +312,25 @@ export default function SystemPage() {
             )}
           </div>
 
-          {/* Confirm modal */}
+          {/* ── Confirm modal ── */}
           {showResetConfirm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowResetConfirm(false)}>
               <div className="bg-card rounded-2xl shadow-2xl border-2 border-red-300 w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
                 <div className="bg-red-600 px-5 py-4 flex items-center gap-3">
                   <AlertOctagon className="w-5 h-5 text-white" />
-                  <h3 className="text-sm font-bold text-white">Confirmation requise</h3>
+                  <h3 className="text-sm font-bold text-white">Confirmation requise — action irréversible</h3>
                 </div>
                 <div className="px-5 py-5 space-y-4">
                   <p className="text-sm text-text">Cette action va <strong>supprimer définitivement</strong> :</p>
-                  <ul className="text-xs text-text-muted space-y-1 list-none">
+                  <ul className="text-xs text-text-muted space-y-1.5 list-none">
                     {["Toutes les données météo, inondations, qualité de l'air, climat","Tous les modèles ML et prédictions","Toutes les alertes et leur historique","Tous les journaux de collecte"].map((item, i) => (
-                      <li key={i} className="flex items-center gap-2"><span className="text-red-500">✕</span>{item}</li>
+                      <li key={i} className="flex items-center gap-2 bg-red-50 px-3 py-1.5 rounded-lg border border-red-100">
+                        <span className="text-red-500 font-bold text-base leading-none">✕</span>{item}
+                      </li>
                     ))}
                   </ul>
                   <div>
-                    <p className="text-xs text-text-muted mb-2">Tapez <strong className="text-red-600">RESET</strong> pour confirmer :</p>
+                    <p className="text-xs text-text-muted mb-2">Tapez <strong className="text-red-600 font-mono">RESET</strong> pour confirmer :</p>
                     <input
                       value={resetConfirmText}
                       onChange={e => setResetConfirmText(e.target.value)}
@@ -287,11 +352,6 @@ export default function SystemPage() {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Collection log */}
-          {!logs.loading && (logs.data?.data || []).length > 0 && (
-            <CollectionLogCard logs={logs.data?.data || []} onCleanup={() => logs.refetch()} />
           )}
         </>
       )}
@@ -329,8 +389,8 @@ function ModelsCard({ models, cityMap, onCleanup, cleanupLoading }: { models: an
   const [algoFilter, setAlgoFilter] = useState("");
   const [search, setSearch] = useState("");
   const [sortR2, setSortR2] = useState<"desc" | "asc" | null>("desc");
-  const allModels: any[] = models.data?.data || [];
-  const types = ["all", ...Array.from(new Set(allModels.map((m: any) => m.model_type)))] as string[];
+  const allModels: any[] = Array.isArray(models.data?.data) ? models.data?.data : [];
+  const types = ["all", ...Array.from(new Set(allModels.map((m: any) => m.model_type).filter((t: string) => t !== "all")))] as string[];
   const algos = Array.from(new Set(allModels.map((m: any) => m.model_name || m.algorithm).filter(Boolean))) as string[];
 
   const filtered = allModels
@@ -677,14 +737,14 @@ function CollectionLogCard({ logs, onCleanup }: { logs: any[]; onCleanup: () => 
   );
 }
 
-function ActionButton({ label, onClick, color = "bg-primary", loading = false }: { label: string; onClick: () => void; color?: string; loading?: boolean }) {
+function ActionButton({ label, onClick, color = "bg-primary", loading = false, icon }: { label: string; onClick: () => void; color?: string; loading?: boolean; icon?: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       disabled={loading}
       className={`${color} text-white text-xs font-medium px-3 py-2.5 rounded-lg hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
     >
-      {loading && <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+      {loading ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : icon}
       {label}
     </button>
   );

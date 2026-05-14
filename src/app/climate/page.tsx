@@ -6,6 +6,7 @@ import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import LocationSelect from "@/components/LocationSelect";
 import { Thermometer, TrendingUp, TrendingDown, Minus, Droplets, Sun, Wind } from "lucide-react";
+import { CLIMATE_COLORS } from "@/lib/thresholds";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Legend, BarChart, Bar, Cell, ReferenceLine, ComposedChart, Area,
@@ -19,7 +20,7 @@ export default function ClimatePage() {
   const [startYear, setStartYear] = useState<number | null>(null);  // null = auto
 
   // First load with auto year
-  const trends = useApi(() => api.getClimateTrends(locationId, startYear ?? undefined), [locationId, startYear]);
+  const trends = useApi(() => api.getClimateTrends(locationId, startYear ?? undefined), [locationId, startYear], "climate-trends");
 
   // Once data arrives, set startYear from earliest_year if still null
   useEffect(() => {
@@ -67,7 +68,7 @@ export default function ClimatePage() {
     year: d.year,
     anomalie: Math.round(d.temp_anomaly * 100) / 100,
     partial: d.partial,
-    fill: d.partial ? "#FBBF24" : d.temp_anomaly > 0 ? "#EF4444" : "#3B82F6",
+    fill: d.partial ? CLIMATE_COLORS.anomaly_part : d.temp_anomaly > 0 ? CLIMATE_COLORS.anomaly_pos : CLIMATE_COLORS.anomaly_neg,
   }));
   const hasData = yearlyData.length > 0 || monthlyChart.length > 0;
 
@@ -182,7 +183,7 @@ export default function ClimatePage() {
             <Card title="Tendance annuelle des températures" subtitle="Température moyenne annuelle avec ligne de tendance">
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={yearlyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                   <YAxis yAxisId="temp" tick={{ fontSize: 11 }} domain={["auto", "auto"]} tickFormatter={v => `${v}°C`} />
                   <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 11 }} tickFormatter={v => `${v}mm`} />
@@ -194,13 +195,13 @@ export default function ClimatePage() {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  {ltMean && <ReferenceLine yAxisId="temp" y={ltMean} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: `Moyenne ${ltMean}°C`, position: 'insideBottomLeft', fontSize: 10, fill: "#92400E", dy: -10 }} />}
-                  <Bar yAxisId="precip" dataKey="total_precipitation" name="Précip. (mm)" fill="#93C5FD" opacity={0.5} radius={[3,3,0,0]} />
+                  {ltMean && <ReferenceLine yAxisId="temp" y={ltMean} stroke={CLIMATE_COLORS.ref_mean} strokeDasharray="4 4" label={{ value: `Moyenne ${ltMean}°C`, position: 'insideTopRight', textAnchor: 'end', fontSize: 10, fill: CLIMATE_COLORS.ref_mean, dx: -10, dy: -18 }} />}
+                  <Bar yAxisId="precip" dataKey="total_precipitation" name="Précip. (mm)" fill={CLIMATE_COLORS.precip_stroke} opacity={0.5} radius={[3,3,0,0]} />
                   <Line yAxisId="temp" type="monotone" dataKey="avg_temperature" name="Temp. moy. (°C)"
-                    stroke="#D63031" strokeWidth={2.5}
+                    stroke={CLIMATE_COLORS.temp_line} strokeWidth={2.5}
                     dot={(p: any) => (
                       <circle key={p.key} cx={p.cx} cy={p.cy} r={p.payload?.partial ? 6 : 4}
-                        fill={p.payload?.partial ? "#F59E0B" : "#D63031"} stroke="#fff" strokeWidth={2} />
+                        fill={p.payload?.partial ? CLIMATE_COLORS.temp_partial : CLIMATE_COLORS.temp_line} stroke="#fff" strokeWidth={2} />
                     )}
                   />
                 </ComposedChart>
@@ -219,7 +220,7 @@ export default function ClimatePage() {
             <Card title="Anomalie thermique annuelle" subtitle={`Écart par rapport à la moyenne long terme (${ltMean}°C)`}>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={anomalyChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${v > 0 ? "+" : ""}${v}°C`} />
                   <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }}
@@ -229,11 +230,11 @@ export default function ClimatePage() {
                       return [`${Number(v) > 0 ? "+" : ""}${Number(v).toFixed(2)}°C`, label];
                     }}
                   />
-                  <ReferenceLine y={0} stroke="#64748B" strokeWidth={1.5} />
+                  <ReferenceLine y={0} stroke={CLIMATE_COLORS.reference} strokeWidth={1.5} />
                   <Bar dataKey="anomalie" name="Anomalie (°C)" radius={[3,3,0,0]}>
                     {anomalyChart.map((d: any) => (
                       <Cell key={d.year}
-                        fill={d.partial ? "#FBBF24" : d.anomalie > 0 ? "#EF4444" : "#3B82F6"}
+                        fill={d.partial ? CLIMATE_COLORS.anomaly_part : d.anomalie > 0 ? CLIMATE_COLORS.anomaly_pos : CLIMATE_COLORS.anomaly_neg}
                         opacity={d.partial ? 0.6 : 0.9}
                       />
                     ))}
@@ -253,15 +254,15 @@ export default function ClimatePage() {
             <Card title="Saisons : sèche vs humide" subtitle="Cumul précipitations par saison (Sahel : mai–oct = humide)">
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={seasonalChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="year" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${v}mm`} />
                   <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }}
                     formatter={(v: any, name: string) => [`${Math.round(Number(v))} mm`, name]}
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="precip_humide" name="Saison humide (mm)" fill="#1D4ED8" radius={[3,3,0,0]} />
-                  <Bar dataKey="precip_seche"  name="Saison sèche (mm)"  fill="#F59E0B" radius={[3,3,0,0]} />
+                  <Bar dataKey="precip_humide" name="Saison humide (mm)" fill={CLIMATE_COLORS.precip_wet} radius={[3,3,0,0]} />
+                  <Bar dataKey="precip_seche"  name="Saison sèche (mm)"  fill={CLIMATE_COLORS.precip_dry} radius={[3,3,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Card>
@@ -272,15 +273,15 @@ export default function ClimatePage() {
             <Card title="Données mensuelles détaillées" subtitle="Température, humidité et précipitations mois par mois">
               <ResponsiveContainer width="100%" height={300}>
                 <ComposedChart data={monthlyChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={Math.max(1, Math.floor(monthlyChart.length / 24))} />
                   <YAxis yAxisId="temp" tick={{ fontSize: 11 }} tickFormatter={v => `${v}°C`} />
                   <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 11 }} tickFormatter={v => `${v}mm`} />
                   <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11 }} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Area yAxisId="precip" type="monotone" dataKey="total_precipitation" name="Précip. (mm)" fill="#BFDBFE" stroke="#3B82F6" strokeWidth={1} dot={false} />
-                  <Line yAxisId="temp" type="monotone" dataKey="avg_temperature" name="Temp. (°C)" stroke="#D63031" strokeWidth={2} dot={false} />
-                  <Line yAxisId="temp" type="monotone" dataKey="avg_humidity" name="Humidité (%)" stroke="#059669" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                  <Area yAxisId="precip" type="monotone" dataKey="total_precipitation" name="Précip. (mm)" fill={CLIMATE_COLORS.precip_fill} stroke={CLIMATE_COLORS.precip_stroke} strokeWidth={1} dot={false} />
+                  <Line yAxisId="temp" type="monotone" dataKey="avg_temperature" name="Temp. (°C)" stroke={CLIMATE_COLORS.temp_line} strokeWidth={2} dot={false} />
+                  <Line yAxisId="temp" type="monotone" dataKey="avg_humidity" name="Humidité (%)" stroke={CLIMATE_COLORS.humidity} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
                 </ComposedChart>
               </ResponsiveContainer>
             </Card>

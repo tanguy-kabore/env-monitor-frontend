@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { RISK_COLORS } from "@/lib/thresholds";
 import dynamic from "next/dynamic";
 
 const MapContainer = dynamic(
@@ -68,10 +69,7 @@ export default function MapView({
   }
 
   const defaultColor = (p: MapPoint) => {
-    if (p.risk === "extreme") return "#D63031";
-    if (p.risk === "high") return "#E17055";
-    if (p.risk === "moderate") return "#FDCB6E";
-    return "#00B894";
+    return RISK_COLORS[(p.risk as keyof typeof RISK_COLORS) ?? "unknown"]?.hex ?? RISK_COLORS.unknown.hex;
   };
 
   const defaultRadius = (p: MapPoint) => {

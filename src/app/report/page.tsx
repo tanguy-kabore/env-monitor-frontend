@@ -5,6 +5,7 @@ import { useApi } from "@/hooks/useApi";
 import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { formatDateTime, getAqiLabel, getFloodRiskLabel, getDroughtLabel, formatNumber } from "@/lib/utils";
+import { ALERT_SEVERITY_COLORS, ALERT_TYPE_COLORS, DROUGHT_COLORS, RISK_COLORS, DROUGHT_THRESHOLDS } from "@/lib/thresholds";
 import {
   FileText, Download, Printer, RefreshCw, Calendar,
   Thermometer, Wind, Waves, Droplets, Bell, AlertTriangle,
@@ -32,27 +33,16 @@ const SEVERITY_LABELS: Record<string, string> = {
   critical: "Critique",
 };
 
-const SEVERITY_COLOR: Record<string, string> = {
-  info:     "#3b82f6",
-  warning:  "#f59e0b",
-  danger:   "#f97316",
-  critical: "#ef4444",
-};
-
-const TYPE_COLOR: Record<string, string> = {
-  flood:       "#3b82f6",
-  air_quality: "#14b8a6",
-  heat_wave:   "#ef4444",
-  drought:     "#f59e0b",
-};
+const SEVERITY_COLOR = ALERT_SEVERITY_COLORS;
+const TYPE_COLOR     = ALERT_TYPE_COLORS;
 
 function getSPILabel(spi: number | null) {
-  if (spi === null || spi === undefined) return { label: "—", color: "text-gray-400" };
-  if (spi <= -2)   return { label: "Extrême",       color: "text-red-600" };
-  if (spi <= -1.5) return { label: "Sévère",         color: "text-orange-600" };
-  if (spi <= -1)   return { label: "Modérée",        color: "text-amber-600" };
-  if (spi < 0)     return { label: "Anomalie sèche", color: "text-blue-500" };
-  return              { label: "Normale",           color: "text-green-600" };
+  if (spi === null || spi === undefined) return { label: "—", color: DROUGHT_COLORS.unknown.color };
+  if (spi <= DROUGHT_THRESHOLDS.extreme)  return { label: "Extrême",       color: DROUGHT_COLORS.extreme.color };
+  if (spi <= DROUGHT_THRESHOLDS.severe)   return { label: "Sévère",         color: DROUGHT_COLORS.severe.color };
+  if (spi <= DROUGHT_THRESHOLDS.moderate) return { label: "Modérée",        color: DROUGHT_COLORS.moderate.color };
+  if (spi < 0)                            return { label: "Anomalie sèche", color: DROUGHT_COLORS.mild.color };
+  return                                         { label: "Normale",           color: DROUGHT_COLORS.normal.color };
 }
 
 function StatBadge({ label, value, color }: { label: string; value: string | number | null; color?: string }) {
@@ -87,7 +77,7 @@ export default function ReportPage() {
   const [days, setDays] = useState(30);
   const printRef = useRef<HTMLDivElement>(null);
 
-  const report = useApi(() => api.getReport(days), [days]);
+  const report = useApi(() => api.getReport(days), [days], "report");
   const data = report.data;
 
   const handlePrint = useCallback(() => {
@@ -146,19 +136,19 @@ export default function ReportPage() {
     Sécheresse:       d.drought || 0,
   }));
 
-  const alertByTypeChart = data
+  const alertByTypeChart = data?.summary
     ? Object.entries(data.summary.alerts_by_type || {}).map(([k, v]) => ({
         name: TYPE_LABELS[k] || k,
         value: v as number,
-        color: TYPE_COLOR[k] || "#6b7280",
+        color: TYPE_COLOR[k] || RISK_COLORS.unknown.hex,
       }))
     : [];
 
-  const alertBySeverityChart = data
+  const alertBySeverityChart = data?.summary
     ? Object.entries(data.summary.alerts_by_severity || {}).map(([k, v]) => ({
         name: SEVERITY_LABELS[k] || k,
         value: v as number,
-        color: SEVERITY_COLOR[k] || "#6b7280",
+        color: SEVERITY_COLOR[k] || RISK_COLORS.unknown.hex,
       }))
     : [];
 
@@ -226,7 +216,7 @@ export default function ReportPage() {
         </Card>
       )}
 
-      {data && (
+      {data?.meta && (
         <div ref={printRef} className="space-y-6 print-area">
 
           {/* ── Cover / meta ── */}
@@ -436,7 +426,7 @@ export default function ReportPage() {
                           </linearGradient>
                         ))}
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                       <XAxis dataKey="date" tick={{ fontSize: 9 }}
                         tickFormatter={v => { const d = new Date(v); return `${d.getDate()}/${d.getMonth()+1}`; }}
                         interval={Math.max(1, Math.floor(alertTimelineChart.length / 7))} />

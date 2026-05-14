@@ -2,8 +2,8 @@ import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 
 interface CardProps {
-  title?: string;
-  subtitle?: string;
+  title?: ReactNode;
+  subtitle?: ReactNode;
   icon?: ReactNode;
   children: ReactNode;
   className?: string;

@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import LocationSelect from "@/components/LocationSelect";
 import MapView from "@/components/MapView";
 import { formatNumber, getAqiLabel } from "@/lib/utils";
+import { useThresholds, aqiHex, AQI_COLORS, AQI_CHART_COLORS, POLLUTANT_WARN_THRESHOLDS, EAQI_POLLUTANT_RANGES } from "@/lib/thresholds";
 import { Wind, TrendingUp, Heart, Eye, Info } from "lucide-react";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
@@ -15,14 +16,6 @@ import {
 } from "recharts";
 
 // ── AQI colour helpers ────────────────────────────────────────────────────────
-function aqiColor(v: number): string {
-  if (v <= 20) return "#00B894";
-  if (v <= 40) return "#55EFC4";
-  if (v <= 60) return "#FDCB6E";
-  if (v <= 80) return "#E17055";
-  return "#D63031";
-}
-
 const HISTORY_DAYS_OPTIONS = [7, 14, 30, 60, 90];
 
 // ── Custom tooltip ────────────────────────────────────────────────────────────
@@ -45,11 +38,13 @@ export default function AirQualityPage() {
   const [locationId, setLocationId] = useState("ouagadougou");
   const [locationName, setLocationName] = useState("Ouagadougou");
   const [histDays, setHistDays] = useState(30);
+  const thresholds = useThresholds();
+  const aqT = thresholds.air_quality;
 
-  const current  = useApi(() => api.getCurrentAirQuality(locationId), [locationId]);
-  const history  = useApi(() => api.getAirQualityHistory(locationId, histDays), [locationId, histDays]);
-  const forecast = useApi(() => api.getAirQualityForecast(locationId), [locationId]);
-  const aqMap    = useApi(() => api.getAirQualityMap(), []);
+  const current  = useApi(() => api.getCurrentAirQuality(locationId), [locationId], "aq-current");
+  const history  = useApi(() => api.getAirQualityHistory(locationId, histDays), [locationId, histDays], "aq-history");
+  const forecast = useApi(() => api.getAirQualityForecast(locationId), [locationId], "aq-forecast");
+  const aqMap    = useApi(() => api.getAirQualityMap(), [], "aq-map");
 
   const aqData  = current.data?.data?.current || current.data?.data;
   const aqiVal  = aqData?.aqi ?? aqData?.european_aqi ?? null;
@@ -66,7 +61,7 @@ export default function AirQualityPage() {
   ] : [];
 
   // ── History chart ──
-  const histRaw: any[] = (history.data?.data || []);
+  const histRaw: any[] = Array.isArray(history.data?.data) ? history.data?.data : [];
   // For long periods (>14d): keep one record per day (last of the day)
   // For short periods: show every point with date+time
   const showTime = histDays <= 14;
@@ -123,21 +118,26 @@ export default function AirQualityPage() {
   const aqiTrend = histChart.filter((d: any) => d.AQI != null);
   const avgAqi   = aqiTrend.length ? Math.round(aqiTrend.reduce((s: number, d: any) => s + d.AQI, 0) / aqiTrend.length) : null;
   const maxAqi   = aqiTrend.length ? Math.max(...aqiTrend.map((d: any) => d.AQI)) : null;
-  const daysExceed = aqiTrend.filter((d: any) => d.AQI > 60).length;
+  const daysExceed = aqiTrend.filter((d: any) => d.AQI > aqT.moderate).length;
 
   // ── Map ──
-  const mapPoints = (aqMap.data?.data || []).map((d: any) => ({
+  const aqMapData = aqMap.data?.data;
+  const mapPoints = (Array.isArray(aqMapData) ? aqMapData : [])
+    .filter((d: any) => d?.location)
+    .map((d: any) => ({
     id: d.location.external_id,
     name: d.location.name,
     latitude: d.location.latitude,
     longitude: d.location.longitude,
     value: d.latest?.aqi || 0,
     label: d.latest ? `AQI: ${d.latest.aqi}` : "N/A",
-    risk: d.latest?.aqi > 80 ? "extreme" : d.latest?.aqi > 60 ? "high" : d.latest?.aqi > 40 ? "moderate" : "low",
+    risk: d.latest?.aqi > aqT.very_poor ? "extreme"
+      : d.latest?.aqi > aqT.poor     ? "high"
+      : d.latest?.aqi > aqT.fair     ? "moderate" : "low",
   }));
 
   // ── Health advice ──
-  const healthAdvice = getHealthAdvice(aqiVal);
+  const healthAdvice = getHealthAdvice(aqiVal, aqT);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -164,23 +164,23 @@ export default function AirQualityPage() {
               <div className="text-center py-4">
                 <div
                   className="inline-flex items-center justify-center w-28 h-28 rounded-full text-4xl font-bold mb-3 border-4"
-                  style={{ borderColor: aqiColor(aqiVal ?? 0), color: aqiColor(aqiVal ?? 0), background: `${aqiColor(aqiVal ?? 0)}18` }}
+                  style={{ borderColor: aqiInfo.hex, color: aqiInfo.hex, background: `${aqiInfo.hex}18` }}
                 >
                   {aqiVal ?? "—"}
                 </div>
-                <p className="text-lg font-semibold" style={{ color: aqiColor(aqiVal ?? 0) }}>{aqiInfo.label}</p>
+                <p className="text-lg font-semibold" style={{ color: aqiInfo.hex }}>{aqiInfo.label}</p>
                 <p className="text-xs text-text-muted mt-1">Indice Européen de Qualité de l&apos;Air (EAQI)</p>
                 <p className="text-[11px] text-text-muted mt-0.5">
                   Relevé : {aqData.observed_at ? new Date(aqData.observed_at).toLocaleString("fr-FR") : "—"}
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-2">
-                <PollutantMini label="PM2.5" value={aqData.pm2_5 || aqData.pm_2_5} unit="μg/m³" warn={15} />
-                <PollutantMini label="PM10"  value={aqData.pm10}                   unit="μg/m³" warn={45} />
-                <PollutantMini label="Poussière" value={aqData.dust}               unit="μg/m³" warn={100} />
-                <PollutantMini label="CO"   value={aqData.co || aqData.carbon_monoxide} unit="μg/m³" warn={4000} />
-                <PollutantMini label="NO₂"  value={aqData.no2 || aqData.nitrogen_dioxide} unit="μg/m³" warn={40} />
-                <PollutantMini label="O₃"   value={aqData.o3 || aqData.ozone}     unit="μg/m³" warn={120} />
+                <PollutantMini label="PM2.5" value={aqData.pm2_5 || aqData.pm_2_5} unit="μg/m³" warn={POLLUTANT_WARN_THRESHOLDS.pm25} />
+                <PollutantMini label="PM10"  value={aqData.pm10}                   unit="μg/m³" warn={POLLUTANT_WARN_THRESHOLDS.pm10} />
+                <PollutantMini label="Poussière" value={aqData.dust}               unit="μg/m³" warn={POLLUTANT_WARN_THRESHOLDS.dust} />
+                <PollutantMini label="CO"   value={aqData.co || aqData.carbon_monoxide} unit="μg/m³" warn={POLLUTANT_WARN_THRESHOLDS.co} />
+                <PollutantMini label="NO₂"  value={aqData.no2 || aqData.nitrogen_dioxide} unit="μg/m³" warn={POLLUTANT_WARN_THRESHOLDS.no2} />
+                <PollutantMini label="O₃"   value={aqData.o3 || aqData.ozone}     unit="μg/m³" warn={POLLUTANT_WARN_THRESHOLDS.o3} />
               </div>
             </Card>
 
@@ -190,7 +190,7 @@ export default function AirQualityPage() {
                 <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
                   <PolarGrid stroke="var(--color-border)" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
-                  <Radar name="% seuil" dataKey="value" stroke="#1B6FA8" fill="#1B6FA8" fillOpacity={0.3} strokeWidth={2} />
+                  <Radar name="% seuil" dataKey="value" stroke={AQI_CHART_COLORS.pm10} fill={AQI_CHART_COLORS.pm10} fillOpacity={0.3} strokeWidth={2} />
                   <Tooltip content={<AqiTooltip />} formatter={(v: any) => [`${v.toFixed(0)} %`, "% du seuil"]} />
                 </RadarChart>
               </ResponsiveContainer>
@@ -224,7 +224,7 @@ export default function AirQualityPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <KpiCard label="AQI moyen" value={avgAqi ?? "—"} sub={`${histDays} derniers jours`} color="text-teal-600" />
           <KpiCard label="AQI maximum" value={maxAqi ?? "—"} sub="pic enregistré" color={maxAqi && maxAqi > 60 ? "text-danger" : "text-warning"} />
-          <KpiCard label="Jours dégradés" value={daysExceed} sub="AQI > 60 (Mauvais)" color={daysExceed > 5 ? "text-danger" : "text-warning"} />
+          <KpiCard label="Jours dégradés" value={daysExceed} sub={`AQI > ${aqT.moderate} (Mauvais)`} color={daysExceed > 5 ? "text-danger" : "text-warning"} />
           <KpiCard label="Jours analysés" value={aqiTrend.length} sub="enregistrements" color="text-text" />
         </div>
       )}
@@ -256,13 +256,13 @@ export default function AirQualityPage() {
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={histChart} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="zoneGood"  x1="0" y1="0" x2="0" y2="1"><stop stopColor="#00B894" stopOpacity={0.12}/></linearGradient>
-                  <linearGradient id="zoneMod"   x1="0" y1="0" x2="0" y2="1"><stop stopColor="#FDCB6E" stopOpacity={0.15}/></linearGradient>
-                  <linearGradient id="zoneBad"   x1="0" y1="0" x2="0" y2="1"><stop stopColor="#E17055" stopOpacity={0.15}/></linearGradient>
-                  <linearGradient id="zoneVBad"  x1="0" y1="0" x2="0" y2="1"><stop stopColor="#D63031" stopOpacity={0.15}/></linearGradient>
+                  <linearGradient id="zoneGood"  x1="0" y1="0" x2="0" y2="1"><stop stopColor={AQI_COLORS.good.hex}      stopOpacity={0.12}/></linearGradient>
+                  <linearGradient id="zoneMod"   x1="0" y1="0" x2="0" y2="1"><stop stopColor={AQI_COLORS.moderate.hex}  stopOpacity={0.15}/></linearGradient>
+                  <linearGradient id="zoneBad"   x1="0" y1="0" x2="0" y2="1"><stop stopColor={AQI_COLORS.poor.hex}      stopOpacity={0.15}/></linearGradient>
+                  <linearGradient id="zoneVBad"  x1="0" y1="0" x2="0" y2="1"><stop stopColor={AQI_COLORS.very_poor.hex} stopOpacity={0.15}/></linearGradient>
                   <linearGradient id="aqiGrad"   x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#7C3AED" stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor="#7C3AED" stopOpacity={0}/>
+                    <stop offset="5%"  stopColor={AQI_CHART_COLORS.aqi} stopOpacity={0.35}/>
+                    <stop offset="95%" stopColor={AQI_CHART_COLORS.aqi} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
@@ -280,15 +280,17 @@ export default function AirQualityPage() {
                 />
                 <Tooltip content={<AqiTooltip />} />
                 {/* colored zone bands */}
-                <ReferenceLine y={20} stroke="#00B894" strokeDasharray="3 3" strokeOpacity={0.6}
-                  label={{ value: "Bon", fill: "#00B894", fontSize: 9, position: "insideRight", dx: -4 }} />
-                <ReferenceLine y={40} stroke="#FDCB6E" strokeDasharray="3 3" strokeOpacity={0.6}
-                  label={{ value: "Acceptable", fill: "#b59b00", fontSize: 9, position: "insideRight", dx: -4 }} />
-                <ReferenceLine y={60} stroke="#E17055" strokeDasharray="3 3" strokeOpacity={0.6}
-                  label={{ value: "Mauvais", fill: "#E17055", fontSize: 9, position: "insideRight", dx: -4 }} />
-                <ReferenceLine y={80} stroke="#D63031" strokeDasharray="3 3" strokeOpacity={0.6}
-                  label={{ value: "Très mauvais", fill: "#D63031", fontSize: 9, position: "insideRight", dx: -4 }} />
-                <Area type="monotoneX" dataKey="AQI" stroke="#7C3AED" fill="url(#aqiGrad)" strokeWidth={2} dot={false} name="AQI" activeDot={{ r: 4, strokeWidth: 0 }} />
+                <ReferenceLine y={aqT.good}     stroke={AQI_COLORS.good.hex}      strokeDasharray="3 3" strokeOpacity={0.6}
+                  label={{ value: "Bon",          fill: AQI_COLORS.good.hex,      fontSize: 9, position: "insideTopRight", dx: -4, dy: -18 }} />
+                <ReferenceLine y={aqT.fair}     stroke={AQI_COLORS.fair.hex}      strokeDasharray="3 3" strokeOpacity={0.6}
+                  label={{ value: "Acceptable",   fill: AQI_COLORS.fair.hex,      fontSize: 9, position: "insideTopRight", dx: -4, dy: -18 }} />
+                <ReferenceLine y={aqT.moderate} stroke={AQI_COLORS.moderate.hex}  strokeDasharray="3 3" strokeOpacity={0.6}
+                  label={{ value: "Modéré",       fill: AQI_COLORS.moderate.hex,  fontSize: 9, position: "insideTopRight", dx: -4, dy: -18 }} />
+                <ReferenceLine y={aqT.poor}     stroke={AQI_COLORS.poor.hex}      strokeDasharray="3 3" strokeOpacity={0.6}
+                  label={{ value: "Mauvais",      fill: AQI_COLORS.poor.hex,      fontSize: 9, position: "insideTopRight", dx: -4, dy: -18 }} />
+                <ReferenceLine y={aqT.very_poor} stroke={AQI_COLORS.very_poor.hex} strokeDasharray="3 3" strokeOpacity={0.6}
+                  label={{ value: "Très mauvais", fill: AQI_COLORS.very_poor.hex, fontSize: 9, position: "insideTopRight", dx: -4, dy: -18 }} />
+                <Area type="monotoneX" dataKey="AQI" stroke={AQI_CHART_COLORS.aqi} fill="url(#aqiGrad)" strokeWidth={2} dot={false} name="AQI" activeDot={{ r: 4, strokeWidth: 0 }} />
               </AreaChart>
             </ResponsiveContainer>
             <p className="text-[10px] text-text-muted text-right mt-1 pr-2">
@@ -305,16 +307,16 @@ export default function AirQualityPage() {
             <AreaChart data={histChart} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="pm25Grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#E17055" stopOpacity={0.25}/>
-                  <stop offset="95%" stopColor="#E17055" stopOpacity={0}/>
+                  <stop offset="5%"  stopColor={AQI_CHART_COLORS.pm25} stopOpacity={0.25}/>
+                  <stop offset="95%" stopColor={AQI_CHART_COLORS.pm25} stopOpacity={0}/>
                 </linearGradient>
                 <linearGradient id="pm10Grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#1B6FA8" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#1B6FA8" stopOpacity={0}/>
+                  <stop offset="5%"  stopColor={AQI_CHART_COLORS.pm10} stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor={AQI_CHART_COLORS.pm10} stopOpacity={0}/>
                 </linearGradient>
                 <linearGradient id="dustGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#FDCB6E" stopOpacity={0.25}/>
-                  <stop offset="95%" stopColor="#FDCB6E" stopOpacity={0}/>
+                  <stop offset="5%"  stopColor={AQI_CHART_COLORS.dust} stopOpacity={0.25}/>
+                  <stop offset="95%" stopColor={AQI_CHART_COLORS.dust} stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
@@ -331,9 +333,9 @@ export default function AirQualityPage() {
               />
               <Tooltip content={<AqiTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" iconSize={8} />
-              <Area type="monotoneX" dataKey="PM2.5"    stroke="#E17055" fill="url(#pm25Grad)" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
-              <Area type="monotoneX" dataKey="PM10"     stroke="#1B6FA8" fill="url(#pm10Grad)" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
-              <Area type="monotoneX" dataKey="Poussière" stroke="#F0A500" fill="url(#dustGrad)" strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} />
+              <Area type="monotoneX" dataKey="PM2.5"    stroke={AQI_CHART_COLORS.pm25} fill="url(#pm25Grad)" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
+              <Area type="monotoneX" dataKey="PM10"     stroke={AQI_CHART_COLORS.pm10} fill="url(#pm10Grad)" strokeWidth={2}   dot={false} activeDot={{ r: 4 }} />
+              <Area type="monotoneX" dataKey="Poussière" stroke={AQI_CHART_COLORS.dust} fill="url(#dustGrad)" strokeWidth={1.5} dot={false} activeDot={{ r: 4 }} />
             </AreaChart>
           </ResponsiveContainer>
           <p className="text-[10px] text-text-muted text-right mt-1 pr-2">
@@ -357,9 +359,9 @@ export default function AirQualityPage() {
                 <YAxis tick={{ fontSize: 10 }} unit=" μg" />
                 <Tooltip content={<AqiTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="PM2.5"     fill="#E17055" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="PM10"      fill="#1B6FA8" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="Poussière" fill="#FDCB6E" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="PM2.5"     fill={AQI_CHART_COLORS.pm25} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="PM10"      fill={AQI_CHART_COLORS.pm10} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="Poussière" fill={AQI_CHART_COLORS.no2}  radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
             <p className="text-[10px] text-text-muted mt-2 text-center">
@@ -385,12 +387,12 @@ export default function AirQualityPage() {
             </thead>
             <tbody>
               {[
-                { label: "Bon",          range: "0–20",   pm25: "0–10",   pm10: "0–20",   o3: "0–50",   no2: "0–40",   color: "#00B894" },
-                { label: "Acceptable",   range: "20–40",  pm25: "10–20",  pm10: "20–40",  o3: "50–100", no2: "40–90",  color: "#55EFC4" },
-                { label: "Modéré",       range: "40–60",  pm25: "20–25",  pm10: "40–50",  o3: "100–130",no2: "90–120", color: "#FDCB6E" },
-                { label: "Mauvais",      range: "60–80",  pm25: "25–50",  pm10: "50–100", o3: "130–240",no2: "120–230",color: "#E17055" },
-                { label: "Très mauvais", range: "80–100", pm25: "50–75",  pm10: "100–150",o3: "240–380",no2: "230–340",color: "#D63031" },
-                { label: "Extrêmement",  range: "> 100",  pm25: "> 75",   pm10: "> 150",  o3: "> 380",  no2: "> 340",  color: "#6C1C1C" },
+                { label: "Bon",          range: `0–${aqT.good}`,               pm25: `0–${EAQI_POLLUTANT_RANGES.pm25.good}`,                                              pm10: `0–${EAQI_POLLUTANT_RANGES.pm10.good}`,                                              o3: `0–${EAQI_POLLUTANT_RANGES.o3.good}`,               no2: `0–${EAQI_POLLUTANT_RANGES.no2.good}`,               color: AQI_COLORS.good.hex },
+                { label: "Acceptable",   range: `${aqT.good}–${aqT.fair}`,     pm25: `${EAQI_POLLUTANT_RANGES.pm25.good}–${EAQI_POLLUTANT_RANGES.pm25.fair}`,             pm10: `${EAQI_POLLUTANT_RANGES.pm10.good}–${EAQI_POLLUTANT_RANGES.pm10.fair}`,             o3: `${EAQI_POLLUTANT_RANGES.o3.good}–${EAQI_POLLUTANT_RANGES.o3.fair}`,   no2: `${EAQI_POLLUTANT_RANGES.no2.good}–${EAQI_POLLUTANT_RANGES.no2.fair}`,   color: AQI_COLORS.fair.hex },
+                { label: "Modéré",       range: `${aqT.fair}–${aqT.moderate}`, pm25: `${EAQI_POLLUTANT_RANGES.pm25.fair}–${EAQI_POLLUTANT_RANGES.pm25.moderate}`,         pm10: `${EAQI_POLLUTANT_RANGES.pm10.fair}–${EAQI_POLLUTANT_RANGES.pm10.moderate}`,         o3: `${EAQI_POLLUTANT_RANGES.o3.fair}–${EAQI_POLLUTANT_RANGES.o3.moderate}`, no2: `${EAQI_POLLUTANT_RANGES.no2.fair}–${EAQI_POLLUTANT_RANGES.no2.moderate}`, color: AQI_COLORS.moderate.hex },
+                { label: "Mauvais",      range: `${aqT.moderate}–${aqT.poor}`, pm25: `${EAQI_POLLUTANT_RANGES.pm25.moderate}–${EAQI_POLLUTANT_RANGES.pm25.poor}`,         pm10: `${EAQI_POLLUTANT_RANGES.pm10.moderate}–${EAQI_POLLUTANT_RANGES.pm10.poor}`,         o3: `${EAQI_POLLUTANT_RANGES.o3.moderate}–${EAQI_POLLUTANT_RANGES.o3.poor}`, no2: `${EAQI_POLLUTANT_RANGES.no2.moderate}–${EAQI_POLLUTANT_RANGES.no2.poor}`, color: AQI_COLORS.poor.hex },
+                { label: "Très mauvais", range: `${aqT.poor}–${aqT.very_poor}`,pm25: `${EAQI_POLLUTANT_RANGES.pm25.poor}–${EAQI_POLLUTANT_RANGES.pm25.very_poor}`,       pm10: `${EAQI_POLLUTANT_RANGES.pm10.poor}–${EAQI_POLLUTANT_RANGES.pm10.very_poor}`,       o3: `${EAQI_POLLUTANT_RANGES.o3.poor}–${EAQI_POLLUTANT_RANGES.o3.very_poor}`, no2: `${EAQI_POLLUTANT_RANGES.no2.poor}–${EAQI_POLLUTANT_RANGES.no2.very_poor}`, color: AQI_COLORS.very_poor.hex },
+                { label: "Extrêmement",  range: `> ${aqT.very_poor}`,          pm25: `> ${EAQI_POLLUTANT_RANGES.pm25.very_poor}`,                                         pm10: `> ${EAQI_POLLUTANT_RANGES.pm10.very_poor}`,                                         o3: `> ${EAQI_POLLUTANT_RANGES.o3.very_poor}`,          no2: `> ${EAQI_POLLUTANT_RANGES.no2.very_poor}`,          color: AQI_COLORS.very_poor.hex },
               ].map(row => (
                 <tr key={row.label} className="border-b border-border/40">
                   <td className="py-1.5 pr-4">
@@ -416,16 +418,16 @@ export default function AirQualityPage() {
         <MapView
           points={mapPoints}
           height="420px"
-          colorFn={(p) => aqiColor(p.value || 0)}
+          colorFn={(p) => aqiHex(p.value && p.value > aqT.very_poor ? "very_poor" : p.value && p.value > aqT.poor ? "poor" : p.value && p.value > aqT.moderate ? "moderate" : p.value && p.value > aqT.fair ? "fair" : "good")}
           radiusFn={() => 10}
         />
         <div className="flex items-center flex-wrap gap-3 mt-3 text-xs text-text-muted">
           {[
-            { label: "Bon (0–20)",           color: "#00B894" },
-            { label: "Acceptable (20–40)",   color: "#55EFC4" },
-            { label: "Modéré (40–60)",       color: "#FDCB6E" },
-            { label: "Mauvais (60–80)",      color: "#E17055" },
-            { label: "Très mauvais (> 80)",  color: "#D63031" },
+            { label: `Bon (0–${aqT.good})`,                       color: AQI_COLORS.good.hex },
+            { label: `Acceptable (${aqT.good}–${aqT.fair})`,      color: AQI_COLORS.fair.hex },
+            { label: `Modéré (${aqT.fair}–${aqT.moderate})`,    color: AQI_COLORS.moderate.hex },
+            { label: `Mauvais (${aqT.moderate}–${aqT.poor})`,     color: AQI_COLORS.poor.hex },
+            { label: `Très mauvais (> ${aqT.poor})`,              color: AQI_COLORS.very_poor.hex },
           ].map(l => (
             <span key={l.label} className="flex items-center gap-1">
               <span className="inline-block w-3 h-3 rounded-full" style={{ background: l.color }} />
@@ -463,19 +465,19 @@ function KpiCard({ label, value, sub, color }: { label: string; value: any; sub:
   );
 }
 
-function getHealthAdvice(aqi: number | null) {
+function getHealthAdvice(aqi: number | null, t: { good: number; fair: number; moderate: number; poor: number; very_poor: number }) {
   if (aqi === null) return null;
-  if (aqi <= 20) return {
+  if (aqi <= t.good) return {
     title: "Qualité de l'air bonne — Activités en plein air sans restriction",
     tips: ["Toutes les activités extérieures sont sûres.", "Profitez de l'air frais."],
     bg: "bg-green-50", border: "border-green-200", textColor: "text-green-800", iconColor: "text-green-600",
   };
-  if (aqi <= 40) return {
+  if (aqi <= t.fair) return {
     title: "Qualité de l'air acceptable — Quelques précautions pour les personnes sensibles",
     tips: ["Les personnes très sensibles peuvent ressentir une légère gêne.", "Les activités extérieures modérées sont acceptables."],
     bg: "bg-teal-50", border: "border-teal-200", textColor: "text-teal-800", iconColor: "text-teal-600",
   };
-  if (aqi <= 60) return {
+  if (aqi <= t.moderate) return {
     title: "Qualité modérée — Précautions recommandées",
     tips: [
       "Les personnes asthmatiques ou cardiaques doivent limiter les efforts prolongés en extérieur.",
@@ -484,7 +486,7 @@ function getHealthAdvice(aqi: number | null) {
     ],
     bg: "bg-yellow-50", border: "border-yellow-200", textColor: "text-yellow-800", iconColor: "text-yellow-600",
   };
-  if (aqi <= 80) return {
+  if (aqi <= t.poor) return {
     title: "Mauvaise qualité — Réduire les activités extérieures",
     tips: [
       "Réduisez les activités physiques intenses en extérieur.",

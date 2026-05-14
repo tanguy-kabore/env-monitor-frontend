@@ -6,6 +6,7 @@ import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import LocationSelect from "@/components/LocationSelect";
 import { formatNumber, formatDate } from "@/lib/utils";
+import { CHART_COLORS } from "@/lib/thresholds";
 import { CloudSun, Thermometer, Droplets, Wind, Sun, TrendingUp } from "lucide-react";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart
@@ -15,9 +16,9 @@ export default function WeatherPage() {
   const [locationId, setLocationId] = useState("ouagadougou");
   const [locationName, setLocationName] = useState("Ouagadougou");
 
-  const forecast = useApi(() => api.getWeatherForecast(locationId), [locationId]);
-  const history = useApi(() => api.getWeatherHistory(locationId, 60), [locationId]);
-  const predictions = useApi(() => api.getWeatherPredictions(locationId), [locationId]);
+  const forecast = useApi(() => api.getWeatherForecast(locationId), [locationId], "weather-forecast");
+  const history = useApi(() => api.getWeatherHistory(locationId, 60), [locationId], "weather-history");
+  const predictions = useApi(() => api.getWeatherPredictions(locationId), [locationId], "weather-predictions");
 
   const forecastData = forecast.data?.data;
   const currentData = forecastData?.current;
@@ -31,7 +32,8 @@ export default function WeatherPage() {
     "Prob. Pluie": dailyData.precipitation_probability_max?.[i] ?? null,
   })) || [];
 
-  const historyChart = history.data?.data?.map((d: any) => ({
+  const historyRaw = history.data?.data;
+  const historyChart = (Array.isArray(historyRaw) ? historyRaw : []).map((d: any) => ({
     date: formatDate(d.observed_at),
     "Temp. Max": d.temperature_max ?? null,
     "Temp. Min": d.temperature_min ?? null,
@@ -76,19 +78,19 @@ export default function WeatherPage() {
                 <AreaChart data={dailyChart} margin={{ top: 5, right: 30, bottom: 5, left: 0 }}>
                   <defs>
                     <linearGradient id="tempMaxGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#D63031" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#D63031" stopOpacity={0} />
+                      <stop offset="5%" stopColor={CHART_COLORS.temp_max} stopOpacity={0.15} />
+                      <stop offset="95%" stopColor={CHART_COLORS.temp_max} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="tempMinGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1B6FA8" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#1B6FA8" stopOpacity={0} />
+                      <stop offset="5%" stopColor={CHART_COLORS.temp_min} stopOpacity={0.15} />
+                      <stop offset="95%" stopColor={CHART_COLORS.temp_min} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="precipGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00B894" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#00B894" stopOpacity={0} />
+                      <stop offset="5%" stopColor={CHART_COLORS.precip} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={CHART_COLORS.precip} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis yAxisId="temp" tick={{ fontSize: 11 }} label={{ value: "°C", angle: -90, position: "insideLeft", fontSize: 11 }} />
                   <YAxis yAxisId="rain" orientation="right" tick={{ fontSize: 11 }} label={{ value: "mm / %", angle: 90, position: "insideRight", fontSize: 11 }} />
@@ -100,10 +102,10 @@ export default function WeatherPage() {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Area yAxisId="temp" type="monotone" dataKey="Temp. Max" stroke="#D63031" fill="url(#tempMaxGrad)" strokeWidth={2} />
-                  <Area yAxisId="temp" type="monotone" dataKey="Temp. Min" stroke="#1B6FA8" fill="url(#tempMinGrad)" strokeWidth={2} />
-                  <Area yAxisId="rain" type="monotone" dataKey="Précipitations" stroke="#00B894" fill="url(#precipGrad)" strokeWidth={2} />
-                  <Line yAxisId="rain" type="monotone" dataKey="Prob. Pluie" stroke="#FDCB6E" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                  <Area yAxisId="temp" type="monotone" dataKey="Temp. Max" stroke={CHART_COLORS.temp_max} fill="url(#tempMaxGrad)" strokeWidth={2} />
+                  <Area yAxisId="temp" type="monotone" dataKey="Temp. Min" stroke={CHART_COLORS.temp_min} fill="url(#tempMinGrad)" strokeWidth={2} />
+                  <Area yAxisId="rain" type="monotone" dataKey="Précipitations" stroke={CHART_COLORS.precip} fill="url(#precipGrad)" strokeWidth={2} />
+                  <Line yAxisId="rain" type="monotone" dataKey="Prob. Pluie" stroke={CHART_COLORS.rain_prob} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
                 </AreaChart>
               </ResponsiveContainer>
             </Card>
@@ -118,19 +120,19 @@ export default function WeatherPage() {
             <AreaChart data={historyChart} margin={{ top: 5, right: 30, bottom: 5, left: 0 }}>
               <defs>
                 <linearGradient id="histMaxGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#D63031" stopOpacity={0.1} />
-                  <stop offset="95%" stopColor="#D63031" stopOpacity={0} />
+                  <stop offset="5%" stopColor={CHART_COLORS.temp_max} stopOpacity={0.1} />
+                  <stop offset="95%" stopColor={CHART_COLORS.temp_max} stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="histMinGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1B6FA8" stopOpacity={0.1} />
-                  <stop offset="95%" stopColor="#1B6FA8" stopOpacity={0} />
+                  <stop offset="5%" stopColor={CHART_COLORS.temp_min} stopOpacity={0.1} />
+                  <stop offset="95%" stopColor={CHART_COLORS.temp_min} stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="histPrecipGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#00B894" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#00B894" stopOpacity={0} />
+                  <stop offset="5%" stopColor={CHART_COLORS.precip} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={CHART_COLORS.precip} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={7} />
               <YAxis yAxisId="temp" tick={{ fontSize: 11 }} label={{ value: "°C", angle: -90, position: "insideLeft", fontSize: 11 }} />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} label={{ value: "mm / %", angle: 90, position: "insideRight", fontSize: 11 }} />
@@ -142,10 +144,10 @@ export default function WeatherPage() {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Area yAxisId="temp" type="monotone" dataKey="Temp. Max" stroke="#D63031" fill="url(#histMaxGrad)" strokeWidth={2} dot={false} />
-              <Area yAxisId="temp" type="monotone" dataKey="Temp. Min" stroke="#1B6FA8" fill="url(#histMinGrad)" strokeWidth={2} dot={false} />
-              <Area yAxisId="right" type="monotone" dataKey="Précipitations" stroke="#00B894" fill="url(#histPrecipGrad)" strokeWidth={2} dot={false} />
-              <Line yAxisId="right" type="monotone" dataKey="Humidité" stroke="#A29BFE" strokeWidth={1.5} dot={false} strokeDasharray="3 2" />
+              <Area yAxisId="temp" type="monotone" dataKey="Temp. Max" stroke={CHART_COLORS.temp_max} fill="url(#histMaxGrad)" strokeWidth={2} dot={false} />
+              <Area yAxisId="temp" type="monotone" dataKey="Temp. Min" stroke={CHART_COLORS.temp_min} fill="url(#histMinGrad)" strokeWidth={2} dot={false} />
+              <Area yAxisId="right" type="monotone" dataKey="Précipitations" stroke={CHART_COLORS.precip} fill="url(#histPrecipGrad)" strokeWidth={2} dot={false} />
+              <Line yAxisId="right" type="monotone" dataKey="Humidité" stroke={CHART_COLORS.humidity} strokeWidth={1.5} dot={false} strokeDasharray="3 2" />
             </AreaChart>
           </ResponsiveContainer>
         </Card>

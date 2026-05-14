@@ -82,7 +82,7 @@ function fmt(v: any): string {
 // ── component ────────────────────────────────────────────────────────────────
 
 export default function ExportPage() {
-  const catalogue = useApi(() => api.getExportCatalogue(), []);
+  const catalogue = useApi(() => api.getExportCatalogue(), [], "export-catalogue");
   const datasets: DatasetMeta[] = catalogue.data?.datasets || [];
 
   const [selected, setSelected] = useState<DatasetMeta | null>(null);

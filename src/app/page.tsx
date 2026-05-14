@@ -5,6 +5,7 @@ import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import MapView from "@/components/MapView";
 import { formatNumber, formatDateTime, getAqiLabel, getFloodRiskLabel } from "@/lib/utils";
+import { RISK_COLORS } from "@/lib/thresholds";
 import {
   Thermometer, Droplets, Wind, Waves, AlertTriangle, Activity,
   CloudSun, BarChart3, RefreshCw, Zap
@@ -137,13 +138,7 @@ export default function DashboardPage() {
         <MapView
           points={mapPoints}
           height="420px"
-          colorFn={(p) => {
-            if (p.risk === "extreme") return "#D63031";
-            if (p.risk === "high") return "#E17055";
-            if (p.risk === "moderate") return "#FDCB6E";
-            if (p.risk === "low") return "#00B894";
-            return "#94A3B8";
-          }}
+          colorFn={(p) => RISK_COLORS[(p.risk as keyof typeof RISK_COLORS) ?? "unknown"]?.hex ?? RISK_COLORS.unknown.hex}
           radiusFn={() => 10}
         />
         {/* Légende carte */}
@@ -153,15 +148,13 @@ export default function DashboardPage() {
             const r = getFloodRiskLabel(lvl);
             return (
               <span key={lvl} className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded-full inline-block" style={{
-                  backgroundColor: lvl==="extreme"?"#D63031":lvl==="high"?"#E17055":lvl==="moderate"?"#FDCB6E":"#00B894"
-                }} />
+                <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: RISK_COLORS[lvl]?.hex }} />
                 <span className={r.color}>{r.label}</span>
               </span>
             );
           })}
           <span className="flex items-center gap-1 ml-2">
-            <span className="w-3 h-3 rounded-full inline-block bg-[#94A3B8]" />
+            <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: RISK_COLORS.unknown.hex }} />
             <span className="text-text-muted">Données manquantes</span>
           </span>
         </div>
