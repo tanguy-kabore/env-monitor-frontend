@@ -11,23 +11,33 @@ function getApiKey(): string {
 async function fetchApi<T = any>(path: string, options?: RequestInit): Promise<T> {
   const url = `${API_V1}${path}`;
   const apiKey = getApiKey();
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-      ...options?.headers,
-    },
-  });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail ?? body.error ?? detail;
-    } catch {}
-    throw new Error(`[${res.status}] ${detail}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
+        ...options?.headers,
+      },
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? body.error ?? detail;
+      } catch {}
+      throw new Error(`[${res.status}] ${detail}`);
+    }
+    return res.json();
+  } catch (err: any) {
+    if (err.name === "AbortError") throw new Error("Délai d'attente dépassé — le serveur met trop de temps à répondre");
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 export const api = {

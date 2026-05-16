@@ -227,10 +227,10 @@ function ScheduledJobsCard({ jobs, onRefresh }: { jobs: any[]; onRefresh: () => 
 // ── Main System Page ───────────────────────────────────────────────────────
 
 export default function SystemPage() {
-  const status = useApi(() => api.getStatus(), [], "system-status");
-  const models = useApi(() => api.getModels(), [], "system-models");
-  const logs = useApi(() => api.getCollectionLog(50), [], "system-logs");
-  const cities = useApi(() => api.getCities(), [], "system-cities");
+  const status = useApi(() => api.getStatus(), [], "system-status", { staleTime: 60_000 });
+  const models = useApi(() => api.getModels(), [], "system-models", { staleTime: 5 * 60_000 });
+  const logs = useApi(() => api.getCollectionLog(50), [], "system-logs", { staleTime: 60_000 });
+  const cities = useApi(() => api.getCities(), [], "system-cities", { staleTime: 30 * 60_000 });
   const [actionMsg, setActionMsg] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [resetDone, setResetDone] = useState(false);
