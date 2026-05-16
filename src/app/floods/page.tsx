@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import LocationSelect from "@/components/LocationSelect";
 import MapView from "@/components/MapView";
 import { formatNumber, formatDate, getFloodRiskLabel } from "@/lib/utils";
+import DataTimestamp from "@/components/DataTimestamp";
 import { useThresholds, classifyFloodRisk, RISK_COLORS, FLOOD_CHART_COLORS } from "@/lib/thresholds";
 import { Waves, TrendingUp, BarChart2, AlertTriangle, Droplets, Activity, Info, Sparkles } from "lucide-react";
 import {
@@ -115,10 +116,10 @@ export default function FloodsPage() {
 
   const riverName = CITY_RIVERS[locationId] || "cours d'eau local (GloFAS)";
 
-  const forecast    = useApi(() => api.getFloodForecast(locationId), [locationId], "flood-forecast");
-  const history     = useApi(() => api.getFloodHistory(locationId, histDays), [locationId, histDays], "flood-history");
-  const predictions = useApi(() => api.getFloodPredictions(locationId), [locationId], "flood-predictions");
-  const riskMap     = useApi(() => api.getFloodRiskMap(), [], "flood-map");
+  const forecast    = useApi(() => api.getFloodForecast(locationId), [locationId], "flood-forecast", { staleTime: 25 * 60 * 1000 });
+  const history     = useApi(() => api.getFloodHistory(locationId, histDays), [locationId, histDays], "flood-history", { staleTime: 8 * 60 * 1000 });
+  const predictions = useApi(() => api.getFloodPredictions(locationId), [locationId], "flood-predictions", { staleTime: 8 * 60 * 1000 });
+  const riskMap     = useApi(() => api.getFloodRiskMap(), [], "flood-map", { staleTime: 8 * 60 * 1000 });
 
   // ── Forecast chart ──
   const forecastDaily = forecast.data?.data?.daily;
@@ -144,8 +145,9 @@ export default function FloodsPage() {
     ? Math.max(...validHist.map((d: any) => d["Débit (m³/s)"]))
     : null;
   const daysAtRisk = validHist.filter((d: any) => d.risk === "high" || d.risk === "extreme").length;
-  const currentRisk = histRaw.at(-1)?.flood_risk_level || "low";
-  const currentDischarge = histRaw.at(-1)?.river_discharge;
+  const lastPastHist = history.loading ? undefined : histRaw.filter((d: any) => new Date(d.observed_at) <= new Date()).at(-1);
+  const currentRisk = history.loading ? null : (lastPastHist?.flood_risk_level ?? null);
+  const currentDischarge = history.loading ? undefined : lastPastHist?.river_discharge;
 
   // ── Risk distribution ──
   const riskCounts: Record<string, number> = { low: 0, moderate: 0, high: 0, extreme: 0 };
@@ -219,7 +221,7 @@ export default function FloodsPage() {
       risk: d.latest_flood?.flood_risk_level || "low",
     }));
 
-  const { label: riskLabel, bg: riskBg, color: riskColor2 } = getFloodRiskLabel(currentRisk);
+  const { label: riskLabel, bg: riskBg, color: riskColor2 } = getFloodRiskLabel(currentRisk ?? "low");
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -233,6 +235,11 @@ export default function FloodsPage() {
           <p className="text-xs text-text-muted mt-0.5">
             Fleuve surveillé : <span className="font-medium text-secondary">{riverName}</span> · Source : GloFAS / Open-Meteo
           </p>
+          <DataTimestamp
+            timestamp={histRaw.filter((d: any) => new Date(d.observed_at) <= new Date()).at(-1)?.observed_at}
+            label="Dernier relevé le"
+            className="mt-1"
+          />
         </div>
         <LocationSelect value={locationId} onChange={(id, loc) => { setLocationId(id); setLocationName(loc.name); }} className="w-64" />
       </div>
@@ -241,10 +248,10 @@ export default function FloodsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           label="Risque actuel"
-          value={<span className={riskColor2}>{riskLabel}</span>}
+          value={currentRisk ? <span className={riskColor2}>{riskLabel}</span> : "—"}
           sub={currentDischarge != null ? `${formatNumber(currentDischarge, 1)} m³/s` : undefined}
           icon={<AlertTriangle className="w-4 h-4 text-white" />}
-          accent={`${riskBg}`}
+          accent={currentRisk ? riskBg : "bg-gray-400/10"}
         />
         <KpiCard
           label="Débit moyen"
@@ -279,6 +286,11 @@ export default function FloodsPage() {
               <span className="text-xs font-normal text-text-muted ml-2">
                 ({predChart.filter((d: any) => !d.isFuture).length}j passés · {predChart.filter((d: any) => d.isFuture).length}j futurs)
               </span>
+              <DataTimestamp
+                timestamp={predRaw[0]?.predicted_at}
+                label="Générées le"
+                className="ml-auto"
+              />
             </div>
           }
           icon={<Activity className="w-4 h-4" />}

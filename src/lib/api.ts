@@ -1,121 +1,153 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_V1 = `${API_BASE}/api/v1`;
+
+// Read at runtime so tests / SSR can set NEXT_PUBLIC_API_KEY
+function getApiKey(): string {
+  return (
+    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_KEY) || ""
+  );
+}
 
 async function fetchApi<T = any>(path: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE}${path}`;
+  const url = `${API_V1}${path}`;
+  const apiKey = getApiKey();
   const res = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...(apiKey ? { "X-API-Key": apiKey } : {}),
       ...options?.headers,
     },
   });
   if (!res.ok) {
-    throw new Error(`API Error: ${res.status} ${res.statusText}`);
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? body.error ?? detail;
+    } catch {}
+    throw new Error(`[${res.status}] ${detail}`);
   }
   return res.json();
 }
 
 export const api = {
   // System
-  getHealth: () => fetchApi("/api/system/health"),
-  getConfig: () => fetchApi("/api/system/config"),
-  getStatus: () => fetchApi("/api/system/status"),
-  initialize: () => fetchApi("/api/system/initialize", { method: "POST" }),
-  resetStatus: () => fetchApi("/api/system/reset-status", { method: "POST" }),
-  getCollectionLog: (limit = 20) => fetchApi(`/api/system/collection-log?limit=${limit}`),
-  getModels: () => fetchApi("/api/system/models"),
-  triggerCollect: (type: string) => fetchApi(`/api/system/collect/${type}`, { method: "POST" }),
-  triggerTrain: () => fetchApi("/api/system/train", { method: "POST" }),
-  cleanupModels: () => fetchApi("/api/system/models/cleanup", { method: "POST" }),
-  cleanupPartialLogs: () => fetchApi("/api/system/collection-log/cleanup", { method: "POST" }),
-  generateAlerts: () => fetchApi("/api/alerts/generate", { method: "POST" }),
-  resolveAlert: (id: string) => fetchApi(`/api/alerts/${id}/resolve`, { method: "POST" }),
-  deleteAlert: (id: string) => fetchApi(`/api/alerts/${id}`, { method: "DELETE" }),
-  resolveAllAlerts: () => fetchApi("/api/alerts/resolve-all", { method: "POST" }),
-  getAlertHistoryStats: (days = 30) => fetchApi(`/api/alerts/history-stats?days=${days}`),
-  resetAllData: () => fetchApi("/api/system/reset-all", { method: "POST" }),
+  getHealth: () => fetchApi("/system/health"),
+  getConfig: () => fetchApi("/system/config"),
+  getStatus: () => fetchApi("/system/status"),
+  getCacheStats: () => fetchApi("/system/cache-stats"),
+  initialize: () => fetchApi("/system/initialize", { method: "POST" }),
+  resetStatus: () => fetchApi("/system/reset-status", { method: "POST" }),
+  getCollectionLog: (limit = 20, offset = 0, status?: string) => {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (status) qs.set("status", status);
+    return fetchApi(`/system/collection-log?${qs}`);
+  },
+  getModels: (limit = 50, offset = 0, modelType?: string) => {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (modelType) qs.set("model_type", modelType);
+    return fetchApi(`/system/models?${qs}`);
+  },
+  triggerCollect: (type: string) => fetchApi(`/system/collect/${type}`, { method: "POST" }),
+  triggerTrain: () => fetchApi("/system/train", { method: "POST" }),
+  cleanupModels: () => fetchApi("/system/models/cleanup", { method: "POST" }),
+  cleanupPartialLogs: () => fetchApi("/system/collection-log/cleanup", { method: "POST" }),
+  clearCache: () => fetchApi("/system/cache", { method: "DELETE" }),
+  generateAlerts: () => fetchApi("/alerts/generate", { method: "POST" }),
+  resolveAlert: (id: string) => fetchApi(`/alerts/${id}/resolve`, { method: "POST" }),
+  deleteAlert: (id: string) => fetchApi(`/alerts/${id}`, { method: "DELETE" }),
+  resolveAllAlerts: () => fetchApi("/alerts/resolve-all", { method: "POST" }),
+  getAlertHistoryStats: (days = 30) => fetchApi(`/alerts/history-stats?days=${days}`),
+  resetAllData: () => fetchApi("/system/reset-all", { method: "POST" }),
+
+  // Scheduler Control
+  getJobDetails: (jobId: string) => fetchApi(`/system/scheduler/jobs/${jobId}`),
+  runJobNow: (jobId: string) => fetchApi(`/system/scheduler/jobs/${jobId}/run`, { method: "POST" }),
+  pauseJob: (jobId: string) => fetchApi(`/system/scheduler/jobs/${jobId}/pause`, { method: "POST" }),
+  resumeJob: (jobId: string) => fetchApi(`/system/scheduler/jobs/${jobId}/resume`, { method: "POST" }),
+  updateJobInterval: (jobId: string, data: { minutes?: number; hours?: number; days?: number; cron?: object }) =>
+    fetchApi(`/system/scheduler/jobs/${jobId}/interval`, { method: "PUT", body: JSON.stringify(data) }),
 
   // Dashboard
-  getDashboard: () => fetchApi("/api/dashboard"),
+  getDashboard: () => fetchApi("/dashboard"),
 
   // Locations
   getLocations: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return fetchApi(`/api/locations${qs}`);
+    return fetchApi(`/locations${qs}`);
   },
-  getRegions: () => fetchApi("/api/locations/regions"),
-  getCities: () => fetchApi("/api/locations/cities"),
-  getLocationTree: () => fetchApi("/api/locations/tree"),
-  getLocation: (id: string) => fetchApi(`/api/locations/${id}`),
+  getRegions: () => fetchApi("/locations/regions"),
+  getCities: () => fetchApi("/locations/cities"),
+  getLocationTree: () => fetchApi("/locations/tree"),
+  getLocation: (id: string) => fetchApi(`/locations/${id}`),
 
   // Weather
-  getCurrentWeather: (locationId: string) => fetchApi(`/api/weather/current/${locationId}`),
+  getCurrentWeather: (locationId: string) => fetchApi(`/weather/current/${locationId}`),
   getWeatherForecast: (locationId: string, days = 7) =>
-    fetchApi(`/api/weather/forecast/${locationId}?days=${days}`),
+    fetchApi(`/weather/forecast/${locationId}?days=${days}`),
   getWeatherHistory: (locationId: string, days = 30) =>
-    fetchApi(`/api/weather/history/${locationId}?days=${days}`),
+    fetchApi(`/weather/history/${locationId}?days=${days}`),
   getWeatherPredictions: (locationId: string) =>
-    fetchApi(`/api/weather/predictions/${locationId}`),
-  getWeatherSummary: () => fetchApi("/api/weather/summary"),
+    fetchApi(`/weather/predictions/${locationId}`),
+  getWeatherSummary: () => fetchApi("/weather/summary"),
 
   // Floods
-  getCurrentFlood: (locationId: string) => fetchApi(`/api/floods/current/${locationId}`),
-  getFloodForecast: (locationId: string) => fetchApi(`/api/floods/forecast/${locationId}`),
+  getCurrentFlood: (locationId: string) => fetchApi(`/floods/current/${locationId}`),
+  getFloodForecast: (locationId: string) => fetchApi(`/floods/forecast/${locationId}`),
   getFloodHistory: (locationId: string, days = 90) =>
-    fetchApi(`/api/floods/history/${locationId}?days=${days}`),
+    fetchApi(`/floods/history/${locationId}?days=${days}`),
   getFloodPredictions: (locationId: string) =>
-    fetchApi(`/api/floods/predictions/${locationId}`),
-  getFloodRiskMap: () => fetchApi("/api/floods/risk-map"),
+    fetchApi(`/floods/predictions/${locationId}`),
+  getFloodRiskMap: () => fetchApi("/floods/risk-map"),
 
   // Air Quality
   getCurrentAirQuality: (locationId: string) =>
-    fetchApi(`/api/air-quality/current/${locationId}`),
+    fetchApi(`/air-quality/current/${locationId}`),
   getAirQualityForecast: (locationId: string) =>
-    fetchApi(`/api/air-quality/forecast/${locationId}`),
+    fetchApi(`/air-quality/forecast/${locationId}`),
   getAirQualityHistory: (locationId: string, days = 30) =>
-    fetchApi(`/api/air-quality/history/${locationId}?days=${days}`),
+    fetchApi(`/air-quality/history/${locationId}?days=${days}`),
   getAirQualityPredictions: (locationId: string) =>
-    fetchApi(`/api/air-quality/predictions/${locationId}`),
-  getAirQualityMap: () => fetchApi("/api/air-quality/map"),
+    fetchApi(`/air-quality/predictions/${locationId}`),
+  getAirQualityMap: () => fetchApi("/air-quality/map"),
 
   // Drought
-  getCurrentDrought: (locationId: string) => fetchApi(`/api/drought/current/${locationId}`),
+  getCurrentDrought: (locationId: string) => fetchApi(`/drought/current/${locationId}`),
   getDroughtHistory: (locationId: string, days = 90) =>
-    fetchApi(`/api/drought/history/${locationId}?days=${days}`),
+    fetchApi(`/drought/history/${locationId}?days=${days}`),
   getDroughtPredictions: (locationId: string) =>
-    fetchApi(`/api/drought/predictions/${locationId}`),
-  getDroughtMap: () => fetchApi("/api/drought/map"),
+    fetchApi(`/drought/predictions/${locationId}`),
+  getDroughtMap: () => fetchApi("/drought/map"),
 
   // Climate
   getClimateData: (locationId: string, startYear = 2020, endYear = 2025) =>
-    fetchApi(`/api/climate/data/${locationId}?start_year=${startYear}&end_year=${endYear}`),
+    fetchApi(`/climate/data/${locationId}?start_year=${startYear}&end_year=${endYear}`),
   getClimateTrends: (locationId: string, startYear?: number) =>
-    fetchApi(`/api/climate/trends/${locationId}${startYear ? `?start_year=${startYear}` : ""}`),
+    fetchApi(`/climate/trends/${locationId}${startYear ? `?start_year=${startYear}` : ""}`),
   compareClimate: (locationIds: string[]) =>
-    fetchApi(`/api/climate/comparison?location_ids=${locationIds.join(",")}`),
+    fetchApi(`/climate/comparison?location_ids=${locationIds.join(",")}`),
 
   // Export
-  getExportCatalogue: () => fetchApi("/api/export/catalogue"),
+  getExportCatalogue: () => fetchApi("/export/catalogue"),
   getExportPreview: (dataset: string, limit = 50, offset = 0, locationId?: string) => {
     const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (locationId) qs.set("location_id", locationId);
-    return fetchApi(`/api/export/preview/${dataset}?${qs}`);
+    return fetchApi(`/export/preview/${dataset}?${qs}`);
   },
   getExportDownloadUrl: (dataset: string, fmt: "csv" | "json", days?: number, locationId?: string) => {
-    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     const qs = new URLSearchParams({ fmt });
     if (days) qs.set("days", String(days));
     if (locationId) qs.set("location_id", locationId);
-    return `${base}/api/export/download/${dataset}?${qs}`;
+    return `${API_V1}/export/download/${dataset}?${qs}`;
   },
 
   // Report
-  getReport: (days = 30) => fetchApi(`/api/report?days=${days}`),
+  getReport: (days = 30) => fetchApi(`/report?days=${days}`),
 
   // Alerts
   getAlerts: (params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-    return fetchApi(`/api/alerts${qs}`);
+    return fetchApi(`/alerts${qs}`);
   },
-  getAlertStats: () => fetchApi("/api/alerts/stats"),
+  getAlertStats: () => fetchApi("/alerts/stats"),
 };

@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
+import { useApi } from "@/hooks/useApi";
 import Card from "@/components/Card";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import MapView from "@/components/MapView";
@@ -10,35 +11,23 @@ import {
   Thermometer, Droplets, Wind, Waves, AlertTriangle, Activity,
   CloudSun, BarChart3, RefreshCw, Zap
 } from "lucide-react";
+import DataTimestamp from "@/components/DataTimestamp";
 
 export default function DashboardPage() {
-  const [dashboard, setDashboard] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: dashboard, loading, error, refetch } = useApi(
+    () => api.getDashboard(), [], "dashboard", { staleTime: 90 * 1000 }
+  );
   const [initializing, setInitializing] = useState(false);
-
-  const loadDashboard = async () => {
-    setLoading(true);
-    try {
-      const data = await api.getDashboard();
-      setDashboard(data);
-      setError(null);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadDashboard(); }, []);
+  const [initError, setInitError] = useState<string | null>(null);
 
   const handleInitialize = async () => {
     setInitializing(true);
+    setInitError(null);
     try {
       await api.initialize();
-      setTimeout(loadDashboard, 5000);
+      setTimeout(refetch, 5000);
     } catch (err: any) {
-      setError(err.message);
+      setInitError(err.message);
     } finally {
       setInitializing(false);
     }
@@ -52,7 +41,7 @@ export default function DashboardPage() {
         <AlertTriangle className="w-12 h-12 text-warning mb-4" />
         <h2 className="text-lg font-semibold mb-2">Connexion au serveur impossible</h2>
         <p className="text-sm text-text-secondary mb-4">{error}</p>
-        <button onClick={loadDashboard} className="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition">
+        <button onClick={refetch} className="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition">
           Réessayer
         </button>
       </div>
@@ -86,8 +75,15 @@ export default function DashboardPage() {
           <p className="text-sm text-text-secondary mt-1">
             Vue d&apos;ensemble de la surveillance environnementale du {dashboard?.app?.country}
           </p>
+          <DataTimestamp
+            timestamp={dashboard?.latest_collection?.created_at}
+            label="Dernière collecte le"
+            className="mt-1"
+          />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col items-end gap-1">
+          {initError && <p className="text-xs text-danger">{initError}</p>}
+          <div className="flex gap-2">
           {!hasData && (
             <button
               onClick={handleInitialize}
@@ -98,9 +94,10 @@ export default function DashboardPage() {
               {initializing ? "Initialisation..." : "Initialiser le système"}
             </button>
           )}
-          <button onClick={loadDashboard} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition">
+          <button onClick={refetch} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition">
             <RefreshCw className="w-4 h-4" /> Actualiser
           </button>
+          </div>
         </div>
       </div>
 

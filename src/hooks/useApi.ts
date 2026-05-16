@@ -1,6 +1,12 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
-import { revalidationBus } from "@/lib/revalidationBus";
+/**
+ * Generic data-fetching hook built on React Query.
+ *
+ * Drop-in replacement for the old custom hook — same return shape
+ * (data, loading, error, refetch) so existing call-sites keep working.
+ * Adds: automatic background refetch, deduplication, and cache sharing.
+ */
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface UseApiResult<T> {
   data: T | null;
@@ -10,69 +16,33 @@ interface UseApiResult<T> {
   refetch: () => void;
 }
 
-interface CacheEntry<T> {
-  data: T;
-  ts: number;
-}
-
-const cache = new Map<string, CacheEntry<any>>();
-const TTL_MS = 2 * 60 * 1000;
-
 export function useApi<T = any>(
   fetcher: () => Promise<T>,
   deps: any[] = [],
-  key?: string
+  key?: string,
+  options?: { enabled?: boolean; staleTime?: number }
 ): UseApiResult<T> {
-  const cacheKey = key ? `${key}:${JSON.stringify(deps)}` : JSON.stringify(deps);
+  // Build a stable query key from the cache key + deps
+  const queryKey: unknown[] = key ? [key, ...deps] : [...deps];
 
-  const cached = cache.get(cacheKey);
-  const isStale = cached ? Date.now() - cached.ts > TTL_MS : false;
+  const queryClient = useQueryClient();
 
-  const [data, setData] = useState<T | null>(cached?.data ?? null);
-  const [loading, setLoading] = useState(!cached);
-  const [revalidating, setRevalidating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const isMounted = useRef(true);
+  const { data, isLoading, isFetching, error } = useQuery<T, Error>({
+    queryKey,
+    queryFn: fetcher,
+    enabled: options?.enabled ?? true,
+    // Keep previous data while revalidating so the UI never blanks
+    placeholderData: (prev) => prev,
+    staleTime: options?.staleTime ?? 2 * 60 * 1000,
+  });
 
-  const fetchData = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    else { setRevalidating(true); revalidationBus.start(); }
-    setError(null);
-    try {
-      const result = await fetcher();
-      cache.set(cacheKey, { data: result, ts: Date.now() });
-      if (isMounted.current) setData(result);
-    } catch (err: any) {
-      if (isMounted.current) setError(err.message || "Erreur de chargement");
-    } finally {
-      if (isMounted.current) {
-        setLoading(false);
-        if (revalidating) revalidationBus.stop();
-        setRevalidating(false);
-      }
-    }
-  }, deps);
-
-  useEffect(() => {
-    isMounted.current = true;
-    const cached = cache.get(cacheKey);
-    if (cached && !isStale) {
-      setData(cached.data);
-      setLoading(false);
-    } else if (cached && isStale) {
-      setData(cached.data);
-      setLoading(false);
-      fetchData(true);
-    } else {
-      fetchData(false);
-    }
-    return () => { isMounted.current = false; };
-  }, [fetchData]);
-
-  const refetch = useCallback(() => {
-    cache.delete(cacheKey);
-    fetchData(false);
-  }, [fetchData, cacheKey]);
-
-  return { data, loading, revalidating, error, refetch };
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    revalidating: isFetching && !isLoading,
+    error: error ? error.message : null,
+    refetch: () => {
+      queryClient.invalidateQueries({ queryKey });
+    },
+  };
 }

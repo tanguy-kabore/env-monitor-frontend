@@ -7,6 +7,225 @@ import { formatDateTime } from "@/lib/utils";
 import { Settings, Database, Cpu, Clock, Play, RefreshCw, Search, ChevronDown, ChevronUp, SlidersHorizontal, Trash2, AlertOctagon, CheckCircle2, Wind, Waves, Droplets, Thermometer, Bell, Zap, Brain, CloudDownload, Activity } from "lucide-react";
 import React, { useState, useEffect } from "react";
 
+// ── Scheduled Jobs Card Component ────────────────────────────────────────────
+
+const JOB_ICON_MAP: Record<string, { icon: React.ReactNode; bg: string; color: string }> = {
+  collect_weather:       { icon: <Thermometer className="w-4 h-4" />, bg: "bg-sky-100",    color: "text-sky-600" },
+  collect_air_quality:   { icon: <Wind         className="w-4 h-4" />, bg: "bg-teal-100",  color: "text-teal-600" },
+  collect_flood:         { icon: <Waves        className="w-4 h-4" />, bg: "bg-blue-100",  color: "text-blue-600" },
+  collect_climate:       { icon: <Droplets     className="w-4 h-4" />, bg: "bg-indigo-100",color: "text-indigo-600" },
+  compute_drought:       { icon: <Activity     className="w-4 h-4" />, bg: "bg-amber-100", color: "text-amber-600" },
+  generate_alerts:       { icon: <Bell         className="w-4 h-4" />, bg: "bg-red-100",   color: "text-red-600" },
+  retrain_models:        { icon: <Brain        className="w-4 h-4" />, bg: "bg-purple-100",color: "text-purple-600" },
+  generate_predictions:  { icon: <Zap          className="w-4 h-4" />, bg: "bg-violet-100",color: "text-violet-600" },
+  archive_daily_alerts:  { icon: <Database     className="w-4 h-4" />, bg: "bg-gray-100",  color: "text-gray-500" },
+};
+
+function ScheduledJobsCard({ jobs, onRefresh }: { jobs: any[]; onRefresh: () => void }) {
+  const [editingJob, setEditingJob] = useState<string | null>(null);
+  const [jobDetails, setJobDetails] = useState<any>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const activeCount = jobs.filter(j => !j.paused).length;
+
+  const handleRunNow = async (jobId: string) => {
+    setLoading(`run-${jobId}`);
+    try {
+      await api.runJobNow(jobId);
+      setMessage(`✓ ${jobId} exécuté`);
+      setTimeout(() => onRefresh(), 1000);
+    } catch (e: any) {
+      setMessage(`Erreur: ${e.message}`);
+    }
+    setLoading(null);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleTogglePause = async (job: any) => {
+    setLoading(`pause-${job.id}`);
+    try {
+      if (job.paused) {
+        await api.resumeJob(job.id);
+        setMessage(`▶ ${job.id} réactivé`);
+      } else {
+        await api.pauseJob(job.id);
+        setMessage(`⏸ ${job.id} mis en pause`);
+      }
+      setTimeout(() => onRefresh(), 500);
+    } catch (e: any) {
+      setMessage(`Erreur: ${e.message}`);
+    }
+    setLoading(null);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const openEditModal = async (jobId: string) => {
+    setEditingJob(jobId);
+    setLoading(`details-${jobId}`);
+    try {
+      const details = await api.getJobDetails(jobId);
+      setJobDetails(details);
+    } catch (e: any) {
+      setMessage(`Erreur chargement: ${e.message}`);
+    }
+    setLoading(null);
+  };
+
+  const handleUpdateInterval = async (jobId: string, data: { minutes?: number; hours?: number }) => {
+    setLoading(`update-${jobId}`);
+    try {
+      await api.updateJobInterval(jobId, data);
+      setMessage(`✓ Fréquence mise à jour`);
+      setEditingJob(null);
+      setTimeout(() => onRefresh(), 500);
+    } catch (e: any) {
+      setMessage(`Erreur: ${e.message}`);
+    }
+    setLoading(null);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  if (jobs.length === 0) return null;
+
+  return (
+    <>
+      <Card
+        title={<div className="flex items-center gap-2">Tâches planifiées <span className="text-xs font-normal text-text-muted">({activeCount} actives · {jobs.length - activeCount} pausées)</span></div>}
+        icon={<Clock className="w-4 h-4" />}
+        subtitle={message ? <span className="text-primary animate-pulse">{message}</span> : undefined}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {jobs.map((job: any) => {
+            const cfg = JOB_ICON_MAP[job.id] || { icon: <Settings className="w-4 h-4" />, bg: "bg-gray-100", color: "text-gray-500" };
+            const isAlert = job.id === "generate_alerts";
+            const isPaused = job.paused;
+            
+            return (
+              <div key={job.id} className={`flex items-start gap-3 p-4 rounded-xl border text-xs transition hover:shadow-sm ${isAlert ? "border-red-200 bg-red-50/20" : isPaused ? "border-gray-200 bg-gray-50/50 opacity-70" : "border-border bg-card"}`}>
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isPaused ? "bg-gray-100" : cfg.bg}`}>
+                  <span className={isPaused ? "text-gray-400" : cfg.color}>{cfg.icon}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className={`font-semibold text-[13px] leading-tight ${isPaused ? "text-text-muted" : "text-text"}`}>
+                      {job.name}
+                    </p>
+                    {isPaused && <span className="px-1.5 py-0.5 rounded text-[9px] bg-gray-200 text-gray-600 font-medium">PAUSE</span>}
+                  </div>
+                  {job.description && (
+                    <p className="text-text-muted mt-0.5 text-[11px] leading-snug">{job.description}</p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <button
+                      onClick={() => openEditModal(job.id)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium border text-[10px] transition hover:shadow-sm ${
+                        isAlert ? "bg-red-100 text-red-700 border-red-200 hover:bg-red-200" : 
+                        isPaused ? "bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200" :
+                        "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100"
+                      }`}
+                    >
+                      <RefreshCw className="w-2.5 h-2.5" /> {job.interval_label}
+                    </button>
+                    {job.next_run && !isPaused && (
+                      <span className="text-text-muted text-[10px] flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>Prochaine : <strong className="text-text">{formatDateTime(job.next_run)}</strong></span>
+                      </span>
+                    )}
+                    {isPaused && (
+                      <span className="text-text-muted text-[10px] italic">En pause — pas d'exécution planifiée</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button
+                    onClick={() => handleRunNow(job.id)}
+                    disabled={loading === `run-${job.id}`}
+                    title="Exécuter maintenant"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-white transition disabled:opacity-50"
+                  >
+                    {loading === `run-${job.id}` ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    onClick={() => handleTogglePause(job)}
+                    disabled={loading === `pause-${job.id}`}
+                    title={isPaused ? "Réactiver" : "Mettre en pause"}
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg transition disabled:opacity-50 ${
+                      isPaused 
+                        ? "bg-green-100 text-green-600 hover:bg-green-600 hover:text-white" 
+                        : "bg-amber-100 text-amber-600 hover:bg-amber-600 hover:text-white"
+                    }`}
+                  >
+                    {loading === `pause-${job.id}` ? <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 
+                      isPaused ? <Play className="w-3.5 h-3.5" /> : <span className="text-sm">⏸</span>}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {editingJob && jobDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setEditingJob(null)}>
+          <div className="bg-card rounded-2xl shadow-xl border border-border w-full max-w-sm mx-4 p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-text">Modifier la fréquence</h3>
+              <button onClick={() => setEditingJob(null)} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-muted transition">×</button>
+            </div>
+            <p className="text-xs text-text-muted mb-4">{jobDetails.name}</p>
+            {jobDetails.editable?.cron ? (
+              <div className="space-y-3">
+                <p className="text-xs text-text-muted">Cette tâche utilise une planification cron quotidienne.</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => handleUpdateInterval(editingJob, { hours: 24 })}
+                    disabled={loading === `update-${editingJob}`}
+                    className="flex-1 py-2 px-3 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 transition disabled:opacity-50"
+                  >
+                    {loading === `update-${editingJob}` ? "..." : "Convertir en intervalle 24h"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  {[30, 60, 120, 360, 720].map(mins => (
+                    <button
+                      key={mins}
+                      onClick={() => handleUpdateInterval(editingJob, { minutes: mins })}
+                      disabled={loading === `update-${editingJob}`}
+                      className="flex-1 py-2 px-1 bg-bg border border-border rounded-lg text-[11px] hover:border-primary hover:text-primary transition disabled:opacity-50"
+                    >
+                      {mins < 60 ? `${mins}min` : `${mins/60}h`}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  {[1, 2, 6, 12, 24].map(hours => (
+                    <button
+                      key={hours}
+                      onClick={() => handleUpdateInterval(editingJob, { hours })}
+                      disabled={loading === `update-${editingJob}`}
+                      className="flex-1 py-2 px-1 bg-bg border border-border rounded-lg text-[11px] hover:border-primary hover:text-primary transition disabled:opacity-50"
+                    >
+                      {hours}h
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-text-muted text-center">Cliquez pour appliquer immédiatement</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Main System Page ───────────────────────────────────────────────────────
+
 export default function SystemPage() {
   const status = useApi(() => api.getStatus(), [], "system-status");
   const models = useApi(() => api.getModels(), [], "system-models");
@@ -215,56 +434,7 @@ export default function SystemPage() {
           </Card>
 
           {/* ── 5. SCHEDULED JOBS ── */}
-          {statusData?.scheduled_jobs?.length > 0 && (() => {
-            const JOB_ICON_MAP: Record<string, { icon: React.ReactNode; bg: string; color: string }> = {
-              collect_weather:    { icon: <Thermometer className="w-4 h-4" />, bg: "bg-sky-100",    color: "text-sky-600" },
-              collect_air_quality:{ icon: <Wind         className="w-4 h-4" />, bg: "bg-teal-100",  color: "text-teal-600" },
-              collect_flood:      { icon: <Waves        className="w-4 h-4" />, bg: "bg-blue-100",  color: "text-blue-600" },
-              collect_climate:    { icon: <Droplets     className="w-4 h-4" />, bg: "bg-indigo-100",color: "text-indigo-600" },
-              compute_drought:    { icon: <Activity     className="w-4 h-4" />, bg: "bg-amber-100", color: "text-amber-600" },
-              generate_alerts:    { icon: <Bell         className="w-4 h-4" />, bg: "bg-red-100",   color: "text-red-600" },
-              retrain_models:     { icon: <Brain        className="w-4 h-4" />, bg: "bg-purple-100",color: "text-purple-600" },
-              generate_predictions:{ icon: <Zap         className="w-4 h-4" />, bg: "bg-violet-100",color: "text-violet-600" },
-              archive_alerts:     { icon: <Database     className="w-4 h-4" />, bg: "bg-gray-100",  color: "text-gray-500" },
-            };
-            return (
-              <Card title="Tâches planifiées" icon={<Clock className="w-4 h-4" />}
-                subtitle={`${statusData.scheduled_jobs.length} tâches actives`}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {statusData.scheduled_jobs.map((job: any) => {
-                    const isAlert = job.id === "generate_alerts";
-                    const cfg = JOB_ICON_MAP[job.id] || { icon: <Settings className="w-4 h-4" />, bg: "bg-gray-100", color: "text-gray-500" };
-                    return (
-                      <div key={job.id} className={`flex items-start gap-3 p-4 rounded-xl border text-xs transition hover:shadow-sm ${isAlert ? "border-red-200 bg-red-50/20" : "border-border bg-card"}`}>
-                        {/* Icon */}
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
-                          <span className={cfg.color}>{cfg.icon}</span>
-                        </div>
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-text text-[13px] leading-tight">{job.name}</p>
-                          {job.description && (
-                            <p className="text-text-muted mt-0.5 text-[11px] leading-snug">{job.description}</p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium border text-[10px] ${isAlert ? "bg-red-100 text-red-700 border-red-200" : "bg-blue-50 text-blue-700 border-blue-100"}`}>
-                              <RefreshCw className="w-2.5 h-2.5" /> {job.interval_label}
-                            </span>
-                            {job.next_run && (
-                              <span className="text-text-muted text-[10px] flex items-center gap-1">
-                                <Clock className="w-2.5 h-2.5" />
-                                <span>Prochaine : <strong className="text-text">{formatDateTime(job.next_run)}</strong></span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            );
-          })()}
+          <ScheduledJobsCard jobs={statusData?.scheduled_jobs || []} onRefresh={() => status.refetch()} />
 
           {/* ── 6. MODELS ── */}
           <ModelsCard models={models} cityMap={cityMap} onCleanup={async () => {

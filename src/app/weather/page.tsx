@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import LocationSelect from "@/components/LocationSelect";
 import { formatNumber, formatDate } from "@/lib/utils";
 import { CHART_COLORS } from "@/lib/thresholds";
+import DataTimestamp from "@/components/DataTimestamp";
 import { CloudSun, Thermometer, Droplets, Wind, Sun, TrendingUp } from "lucide-react";
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart
@@ -16,9 +17,9 @@ export default function WeatherPage() {
   const [locationId, setLocationId] = useState("ouagadougou");
   const [locationName, setLocationName] = useState("Ouagadougou");
 
-  const forecast = useApi(() => api.getWeatherForecast(locationId), [locationId], "weather-forecast");
-  const history = useApi(() => api.getWeatherHistory(locationId, 60), [locationId], "weather-history");
-  const predictions = useApi(() => api.getWeatherPredictions(locationId), [locationId], "weather-predictions");
+  const forecast = useApi(() => api.getWeatherForecast(locationId), [locationId], "weather-forecast", { staleTime: 25 * 60 * 1000 });
+  const history = useApi(() => api.getWeatherHistory(locationId, 60), [locationId], "weather-history", { staleTime: 8 * 60 * 1000 });
+  const predictions = useApi(() => api.getWeatherPredictions(locationId), [locationId], "weather-predictions", { staleTime: 8 * 60 * 1000 });
 
   const forecastData = forecast.data?.data;
   const currentData = forecastData?.current;
@@ -49,6 +50,11 @@ export default function WeatherPage() {
             <CloudSun className="w-7 h-7 text-primary" /> Prévisions Météorologiques
           </h1>
           <p className="text-sm text-text-secondary mt-1">Données en temps réel et prévisions pour {locationName}</p>
+          <DataTimestamp
+            timestamp={currentData?.time}
+            label="Actualisé le"
+            className="mt-1"
+          />
         </div>
         <LocationSelect
           value={locationId}

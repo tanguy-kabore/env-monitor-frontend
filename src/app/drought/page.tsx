@@ -8,10 +8,11 @@ import LocationSelect from "@/components/LocationSelect";
 import MapView from "@/components/MapView";
 import { formatNumber, formatDate, getDroughtLabel } from "@/lib/utils";
 import { useThresholds, DROUGHT_COLORS, DROUGHT_CHART_COLORS } from "@/lib/thresholds";
-import { 
-  Droplets, Sun, CloudRain, AlertTriangle, TrendingDown, 
-  Calendar, Clock, Thermometer 
+import {
+  Droplets, Sun, CloudRain, AlertTriangle, TrendingDown,
+  Calendar, Clock, Thermometer
 } from "lucide-react";
+import DataTimestamp from "@/components/DataTimestamp";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   Legend, ReferenceLine, ReferenceArea, Area, ComposedChart, Bar, Label
@@ -65,7 +66,9 @@ export default function DroughtPage() {
   // KPI calculations
   const kpis = useMemo(() => {
     if (rawData.length === 0) return null;
-    const latest = rawData[rawData.length - 1];
+    const now = Date.now();
+    const pastData = rawData.filter(d => new Date(d.observed_at).getTime() <= now);
+    const latest = pastData.length > 0 ? pastData[pastData.length - 1] : rawData[rawData.length - 1];
     const spiStatus = getSPIStatus(latest.spi_value);
     
     // Days since last rain (precip > 1mm)
@@ -174,6 +177,11 @@ export default function DroughtPage() {
           <p className="text-sm text-text-secondary mt-1">
             Indice standardisé de précipitations (SPI) — {locationName}
           </p>
+          <DataTimestamp
+            timestamp={kpis?.latest?.observed_at}
+            label="Dernier relevé le"
+            className="mt-1"
+          />
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">

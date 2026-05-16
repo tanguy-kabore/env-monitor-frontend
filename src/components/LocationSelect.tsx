@@ -1,7 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { MapPin, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
+import { useApi } from "@/hooks/useApi";
 
 interface Location {
   id: string;
@@ -18,13 +19,10 @@ interface LocationSelectProps {
 }
 
 export default function LocationSelect({ value, onChange, className }: LocationSelectProps) {
-  const [cities, setCities] = useState<Location[]>([]);
+  const { data: citiesData } = useApi(() => api.getCities(), [], "cities-list", { staleTime: 30 * 60 * 1000 });
+  const cities: Location[] = (citiesData as any)?.data || [];
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    api.getCities().then((res: any) => setCities(res.data || [])).catch(() => {});
-  }, []);
 
   const filtered = cities.filter((c) =>
     c.name.toLowerCase().includes(search.toLowerCase())

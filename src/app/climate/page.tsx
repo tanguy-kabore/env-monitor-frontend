@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import Card from "@/components/Card";
@@ -21,13 +21,6 @@ export default function ClimatePage() {
 
   // First load with auto year
   const trends = useApi(() => api.getClimateTrends(locationId, startYear ?? undefined), [locationId, startYear], "climate-trends");
-
-  // Once data arrives, set startYear from earliest_year if still null
-  useEffect(() => {
-    if (trends.data?.earliest_year && startYear === null) {
-      setStartYear(trends.data.earliest_year);
-    }
-  }, [trends.data]);
 
   const yearlyData   = trends.data?.yearly_trends || [];
   const monthlyData  = trends.data?.monthly || [];

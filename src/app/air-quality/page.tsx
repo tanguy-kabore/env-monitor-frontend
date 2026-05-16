@@ -9,6 +9,7 @@ import MapView from "@/components/MapView";
 import { formatNumber, getAqiLabel } from "@/lib/utils";
 import { useThresholds, aqiHex, AQI_COLORS, AQI_CHART_COLORS, POLLUTANT_WARN_THRESHOLDS, EAQI_POLLUTANT_RANGES } from "@/lib/thresholds";
 import { Wind, TrendingUp, Heart, Eye, Info } from "lucide-react";
+import DataTimestamp from "@/components/DataTimestamp";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -41,10 +42,10 @@ export default function AirQualityPage() {
   const thresholds = useThresholds();
   const aqT = thresholds.air_quality;
 
-  const current  = useApi(() => api.getCurrentAirQuality(locationId), [locationId], "aq-current");
-  const history  = useApi(() => api.getAirQualityHistory(locationId, histDays), [locationId, histDays], "aq-history");
-  const forecast = useApi(() => api.getAirQualityForecast(locationId), [locationId], "aq-forecast");
-  const aqMap    = useApi(() => api.getAirQualityMap(), [], "aq-map");
+  const current  = useApi(() => api.getCurrentAirQuality(locationId), [locationId], "aq-current", { staleTime: 4 * 60 * 1000 });
+  const history  = useApi(() => api.getAirQualityHistory(locationId, histDays), [locationId, histDays], "aq-history", { staleTime: 8 * 60 * 1000 });
+  const forecast = useApi(() => api.getAirQualityForecast(locationId), [locationId], "aq-forecast", { staleTime: 25 * 60 * 1000 });
+  const aqMap    = useApi(() => api.getAirQualityMap(), [], "aq-map", { staleTime: 8 * 60 * 1000 });
 
   const aqData  = current.data?.data?.current || current.data?.data;
   const aqiVal  = aqData?.aqi ?? aqData?.european_aqi ?? null;
@@ -150,6 +151,11 @@ export default function AirQualityPage() {
           <p className="text-sm text-text-secondary mt-1">
             Polluants, historique et prévisions — {locationName}
           </p>
+          <DataTimestamp
+            timestamp={aqData?.observed_at ?? aqData?.time}
+            label="Relevé le"
+            className="mt-1"
+          />
         </div>
         <LocationSelect value={locationId} onChange={(id, loc) => { setLocationId(id); setLocationName(loc.name); }} className="w-64" />
       </div>
