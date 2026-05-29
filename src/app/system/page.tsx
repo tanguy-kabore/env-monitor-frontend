@@ -597,7 +597,7 @@ function ModelsCard({ models, cityMap, onCleanup, cleanupLoading }: { models: an
     });
 
   return (
-    <Card title={`Modèles ML actifs (${models.data?.count ?? 0})`} icon={<Cpu className="w-5 h-5" />}>
+    <Card title={`Modèles ML actifs (${models.data?.pagination?.total ?? allModels.length})`} icon={<Cpu className="w-5 h-5" />}>
       {models.loading ? <LoadingSpinner /> : allModels.length === 0 ? (
         <div className="text-center py-8 text-text-muted text-xs">
           <Cpu className="w-8 h-8 mx-auto mb-2 opacity-30" />
