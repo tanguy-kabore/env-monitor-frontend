@@ -138,7 +138,7 @@ export default function AlertsPage() {
   const SEVERITY_ORDER: Record<string, number> = { critical: 0, danger: 1, warning: 2, info: 3 };
 
   const filtered = useMemo(() => {
-    const list: any[] = Array.isArray(alerts.data?.data) ? alerts.data?.data : []
+    const list: any[] = (Array.isArray(alerts.data?.data) ? alerts.data?.data : [])
       .filter((a: any) => !resolvedIds.has(a.id) && !deletedIds.has(a.id));
     const searched = !search.trim() ? list : list.filter(a =>
       a.title?.toLowerCase().includes(search.toLowerCase()) ||
