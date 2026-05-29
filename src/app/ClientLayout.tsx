@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { revalidationBus } from "@/lib/revalidationBus";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
-  const [appName, setAppName] = useState("EcoWatch Burkina");
+  const [appName, setAppName] = useState("Secheinon Burkina");
   const [collapsed, setCollapsed] = useState(false);
   const [revalidating, setRevalidating] = useState(false);
 

@@ -4,7 +4,7 @@ import ClientLayout from "./ClientLayout";
 import { QueryProvider } from "@/components/QueryProvider";
 
 export const metadata: Metadata = {
-  title: "EcoWatch Burkina - Surveillance Environnementale",
+  title: "Secheinon Burkina - Surveillance Environnementale",
   description: "Système National de Surveillance Environnementale du Burkina Faso",
 };
 

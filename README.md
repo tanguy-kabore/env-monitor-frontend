@@ -1,4 +1,4 @@
-# EcoWatch Burkina — Frontend
+# Secheinon Burkina — Frontend
 
 > **Version 1.0.0-alpha** · Build 20260513-001
 
@@ -50,7 +50,7 @@ frontend/
 ## Prérequis
 
 - Node.js **18+**
-- Backend EcoWatch démarré sur `http://localhost:8000`
+- Backend Secheinon démarré sur `http://localhost:8000`
 
 ---
 

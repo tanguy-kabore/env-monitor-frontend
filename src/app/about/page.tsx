@@ -85,7 +85,7 @@ export default function AboutPage() {
           {cfg.loading ? <LoadingSpinner /> : (
             <>
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold text-text">{app?.name || "EcoWatch Burkina"}</h1>
+                <h1 className="text-2xl font-bold text-text">{app?.name || "Secheinon Burkina"}</h1>
                 <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${vtStyle.cls}`}>
                   {vtStyle.label}
                 </span>
@@ -115,7 +115,7 @@ export default function AboutPage() {
         <SectionTitle icon={<Info className="w-4.5 h-4.5" />} title="Présentation du système" />
         <div className="prose prose-sm text-text-secondary max-w-none space-y-3 text-sm">
           <p>
-            <strong className="text-text">EcoWatch Burkina</strong> est un système national de surveillance environnementale en temps réel,
+            <strong className="text-text">Secheinon Burkina</strong> est un système national de surveillance environnementale en temps réel,
             couvrant <strong className="text-text">45 villes</strong> sur l'ensemble du territoire burkinabè. Il collecte, traite et
             visualise des données issues de sources satellites et de modèles numériques de référence mondiale.
           </p>
