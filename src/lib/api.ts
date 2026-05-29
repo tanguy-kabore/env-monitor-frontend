@@ -12,7 +12,7 @@ async function fetchApi<T = any>(path: string, options?: RequestInit): Promise<T
   const url = `${API_V1}${path}`;
   const apiKey = getApiKey();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000);
+  const timer = setTimeout(() => controller.abort(), 60_000);
   try {
     const res = await fetch(url, {
       ...options,
@@ -60,6 +60,7 @@ export const api = {
   },
   triggerCollect: (type: string) => fetchApi(`/system/collect/${type}`, { method: "POST" }),
   triggerTrain: () => fetchApi("/system/train", { method: "POST" }),
+  triggerFullCycle: () => fetchApi("/system/full-cycle", { method: "POST" }),
   cleanupModels: () => fetchApi("/system/models/cleanup", { method: "POST" }),
   cleanupPartialLogs: () => fetchApi("/system/collection-log/cleanup", { method: "POST" }),
   clearCache: () => fetchApi("/system/cache", { method: "DELETE" }),

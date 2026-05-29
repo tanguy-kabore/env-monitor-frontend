@@ -337,7 +337,7 @@ export default function SystemPage() {
                 <CloudDownload className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium">Dernière collecte historique</p>
+                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium">Dernière collecte</p>
                 <p className="font-semibold text-xs mt-0.5 text-text">
                   {statusData?.last_historical_load ? formatDateTime(statusData.last_historical_load) : <span className="text-text-muted italic">Jamais</span>}
                 </p>
@@ -429,6 +429,29 @@ export default function SystemPage() {
                     setTimeout(() => setActionMsg(""), 6000);
                   }} loading={actionLoading === "alerts"} color="bg-red-600" />
                 </div>
+
+              <div className="border-t border-border" />
+
+              {/* Full cycle */}
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wide font-medium mb-2">Cycle complet automatique</p>
+                <ActionButton
+                  icon={<Zap className="w-3.5 h-3.5" />}
+                  label="Collecter + Entraîner + Alertes"
+                  onClick={async () => {
+                    setActionLoading("full-cycle");
+                    setActionMsg("Cycle complet démarré en arrière-plan (collecte → entraînement → alertes)...");
+                    try {
+                      await api.triggerFullCycle();
+                      setActionMsg("✓ Cycle complet lancé — rafraîchissez dans quelques minutes");
+                    } catch (e: any) { setActionMsg(`Erreur: ${e.message}`); }
+                    finally { setActionLoading(null); }
+                    setTimeout(() => setActionMsg(""), 10000);
+                  }}
+                  loading={actionLoading === "full-cycle"}
+                  color="bg-gradient-to-r from-secondary to-purple-600"
+                />
+              </div>
               </div>
             </div>
           </Card>
