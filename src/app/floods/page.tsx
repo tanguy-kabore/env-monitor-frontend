@@ -435,7 +435,15 @@ export default function FloodsPage() {
       )}
 
       {/* ── Carte ── */}
-      <Card title="Carte nationale des risques d'inondation" icon={<Waves className="w-5 h-5" />}>
+      <Card
+        title="Carte nationale des risques d'inondation"
+        icon={<Waves className="w-5 h-5" />}
+        headerAction={
+          riskMap.data?.updated_at ? (
+            <DataTimestamp timestamp={riskMap.data.updated_at} label="Mise à jour" className="text-[10px]" />
+          ) : undefined
+        }
+      >
         <MapView
           points={mapPoints}
           height="400px"
